@@ -47,25 +47,6 @@ def inversa_exponential(t0, N):
 	return f
 
 
-def generatore(t0, tM, N):
-  """La funzione prende in entrata il tempo caratteristico t0 e la finestra temporale tM. Dentro un ciclo while (con tempototale < tM) genero un numero randomico
-     secondo una distribuzione uniforme per poi utilizzare il metodo della funzione inversa per farlo distribuire secondo un esponenziale del tipo f = -t0*ln(1-u)
-     Il numero così generato è un tempo e il tempototale è la somma di questi tempi e contatore mi tiene conto di quanti tempi sono presenti, con tempototale < tM"""
-	risultati = []
-  
-	for i in range(N):
-		tempototale = 0               
-		contatore = 0
-		while (tempototale < tM):	
-			u = np.random.uniform(0, 1)
-			tempo = -t0 * np.log(1-u)
-			tempototale += tempo
-			if tempototale < tM :
-				contatore += 1            
-    		risultati.append(contatore)
-  	return risultati
-
-
 def generatore_poisson(t, N):                   
 	"""il contatore mi restituisce un numero che è sostanzialmente per quante volte moltiplico p per un numero casuale"""
 	risultati = []
