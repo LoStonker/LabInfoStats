@@ -31,22 +31,21 @@ def bisezione_iterativa(f, a, b, tolleranza=1e-6, max_iter=100):
 def bisezione_ricorsiva(f, a, b, tolleranza=1e-6):
     """
     Metodo ricorsivo per trovare lo zero di una funzione usando il metodo di bisezione.
+    Lancia un'eccezione se l'intervallo fornito non contiene uno zero.
     """
-    # Controllo che gli estremi abbiano segni opposti
-    if f(a) * f(b) >= 0:
-        raise ValueError("La funzione deve avere segni opposti ai due estremi dell'intervallo [a, b].")
-    
+    if f(a) * f(b) > 0:
+        raise ValueError("L'intervallo fornito non contiene uno zero (segni uguali ai due estremi).")
     c = (a + b) / 2  # Punto medio
-
-    # Controllo delle condizioni di arresto
     if abs(f(c)) < tolleranza or abs(b - a) / 2 < tolleranza:
         return c
-    
-    # Ricorsione negli intervalli corretti
     if f(a) * f(c) < 0:
-        return bisezione_ricorsiva(f, a, c, tolleranza)  # Ricorsione su [a, c]
+        if f(a) * f(b) > 0:
+            raise ValueError("Intervallo non valido durante la ricorsione.")
+        return bisezione_ricorsiva(f, a, c, tolleranza)
     else:
-        return bisezione_ricorsiva(f, c, b, tolleranza)  # Ricorsione su [c, b]
+        if f(a) * f(b) > 0:
+            raise ValueError("Intervallo non valido durante la ricorsione.")
+        return bisezione_ricorsiva(f, c, b, tolleranza)
 
 
 def minimi_ricorsiva(f, a, b, tolleranza=1e-6):
