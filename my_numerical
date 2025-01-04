@@ -39,21 +39,21 @@ def bisezione_ricorsiva(f, a, b, tolleranza=1e-6):
 
 
 def minimi_ricorsiva(f, a, b, tolleranza=1e-6):
- """
- Estremi ricorsiva calcola il minimo di una funzione
- Argomenti: stessi di Bisezione
- """
-  phi = (1 + np.sqrt(5)) / 2
-  x1 = a + (b-a)/(phi**2)
-  x2 = a + (b-a)/(phi)
-  if (b-a) < tolleranza:
-    min = (a + b) / 2
-    minf = f(min)
-    return [min, minf]
-  elif f(x1) < f(x2):
-    return estremi(f, a, x2, tolleranza)
-  else:
-    return estremi(f, x1, b, tolleranza)
+    """
+    Estremi ricorsiva calcola il minimo di una funzione
+    Argomenti: stessi di Bisezione
+    """
+    phi = (1 + np.sqrt(5)) / 2
+    x1 = a + (b-a)/(phi**2)
+    x2 = a + (b-a)/(phi)
+    if (b-a) < tolleranza:
+        min = (a + b) / 2
+        minf = f(min)
+        return [min, minf]
+    elif f(x1) < f(x2):
+        return estremi(f, a, x2, tolleranza)
+    else:
+        return estremi(f, x1, b, tolleranza)
 
 
 def massimi_ricorsiva(f, a, b, tolleranza=1e-6):
@@ -89,10 +89,10 @@ def estremi_max(f, a, b, tolleranza=1e-6):
     
 
 def hit_or_miss_integrate(f, a, b, N, M):      
-"""
-La funzione ha come entrate la funzione f, gli estremi "a" e "b", 
-il numero di eventi da generare e l'estremo superiore M della funzione
-"""
+    """
+    La funzione ha come entrate la funzione f, gli estremi "a" e "b", 
+    il numero di eventi da generare e l'estremo superiore M della funzione
+    """
   x_rand = np.random.uniform(a, b, N)
   y_rand = np.random.uniform(0, M, N)
   hits = 0
@@ -107,10 +107,10 @@ il numero di eventi da generare e l'estremo superiore M della funzione
   return integral, std_integral
 
 def crude_montecarlo_integrate(f, a, b, N):
-"""
-Monecarlo Method stima numericamente l'integrale sfruttando E[f(x)]
-Argomenti: la funzione, gli estremi e il numero di elementi N
-"""
+    """
+    Monecarlo Method stima numericamente l'integrale sfruttando E[f(x)]
+    Argomenti: la funzione, gli estremi e il numero di elementi N
+        """
   x = np.linspace(a, b, N)
   f = np.array(f(x))
   mean = np.mean(f)
