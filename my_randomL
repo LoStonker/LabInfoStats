@@ -62,18 +62,25 @@ def generatore_poisson(t, N):
 
 
 def generatore_gaussiani(Ntoy, Neventi):      
-	"""
-	la funzione sfrutta il TCL, calcola le medie e le sigma
-	"""
-	medie = []
-	for i in range (Ntoy):
-		eventi = np.random.uniform(0,1,Neventi)
-		toy_stats = np.mean(eventi)
-		medie.append(toy_stats)
-  	sigma = []
-  	for i in range (len(medie)):
-		s = [np.std(np.random.uniform(0,1,Neventi))]/(np.sqrt(Neventi))
-		sigma.append(s) 
-	return medie, sigma
+    """
+    Argomenti:
+    - Ntoy (int): Numero di simulazioni da generare.
+    - Neventi (int): Numero di eventi per ogni simulazione.
+
+    Ritorna:
+    - medie (list): Lista delle medie calcolate per ogni simulazione.
+    - sigma (list): Lista delle stime dell'errore sulla media per ogni simulazione.
+    """
+    medie = []
+    for _ in range(Ntoy):
+        eventi = np.random.uniform(0, 1, Neventi)  # Genera eventi uniformi
+        toy_stats = np.mean(eventi)               # Calcola la media
+        medie.append(toy_stats)                   # Aggiungi alla lista delle medie
+
+    sigma_valore = np.std(np.random.uniform(0, 1, Neventi)) / np.sqrt(Neventi)
+    sigma = [sigma_valore] * Ntoy  # Stima costante per ogni toy
+
+    return medie, sigma
+
 
  
