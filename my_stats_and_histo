@@ -106,16 +106,14 @@ def plot_histogram(data, bins, label, color, edgescolor, xlabel, ylabel, overlay
         overlay (callable): Funzione teorica da sovrapporre (opzionale), Se overlay
 		non è nullo ci metto la funzione, cioè la pdf (senza l'argomento, solamente il nome della funzione)
     """
-    
-	plt.hist(data, bins=bins, density=density, alpha=0.6, color=color, label=label)
-    	if overlay is not None:
-        	x = np.linspace(min(data), max(data), 500)
-        	plt.plot(x, overlay(x), label="Theoretical", color='red')
-    	plt.xlabel(xlabel)
-    	plt.ylabel(ylabel if density else "Count")
-    	plt.legend()
-    	plt.show()
-
+    plt.hist(data, bins=bins, density=density, alpha=0.6, color=color, label=label, edgecolor=edgescolor)
+    if overlay is not None:
+        x = np.linspace(min(data), max(data), 500)
+        plt.plot(x, overlay(x), label="Theoretical", color='red')
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel if density else "Count")
+    plt.legend()
+    plt.show()
 
 
 
