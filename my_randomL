@@ -1,0 +1,97 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import scipy.stats as sc
+
+"""
+Funzioni per generare numeri pseudo casuali
+"""
+
+def generatore_casual_pdf(pdf, n, xmin, xmax, N):
+	"""
+  Questa funzione prende in ingresso: una pdf qualunque, 
+	massimo e minimo del dominio delle x e quanto voglio grande questo dominio N
+	e infine quanti numeri n piccolo voglio generare"""
+	x = np.linspace(xmin, xmax, N)
+	pdf_values = pdf(x)
+	pdf_values /= np.trapz(pdf_values) """normalizzo la pdf con l'integrale"""
+
+	cdf = np.cumsum(pdf_values)
+	cdf /= cdf[-1]  
+
+	random_numbers = np.random.uniform(0, 1, size=n)
+	samples = np.interp(random_numbers, cdf, x)  """interp mi trasforma i dati con la cdf"""
+	return samples, x, pdf_values
+
+
+def TCL(media, sigma, N):                
+  """
+  Funzione che genera e calcola le medie di sample di numeri casuali conosciuti media e sigma
+  """
+  eventi = 0
+  delta = np.sqrt(3*N)*sigma
+  xmin = media - delta
+  xmax = media + delta
+  for i in range (N):
+    eventi += np.random.uniform(xmin, xmax)
+  eventi /= N
+  return eventi
+
+
+def inversa_exponential(t0, N):
+  """
+  Funzione che mi genera N numeri distribuiti esponenzialmente con lambda=1/t0
+  """
+  u = np.random.uniform(0, 1, N)
+  f = -t0 * np.log(1 - u)
+  return f
+
+
+def generatore(t0, tM, N):
+  """La funzione prende in entrata il tempo caratteristico t0 e la finestra temporale tM. Dentro un ciclo while (con tempototale < tM) genero un numero randomico
+     secondo una distribuzione uniforme per poi utilizzare il metodo della funzione inversa per farlo distribuire secondo un esponenziale del tipo f = -t0*ln(1-u)
+     Il numero così generato è un tempo e il tempototale è la somma di questi tempi e contatore mi tiene conto di quanti tempi sono presenti, con tempototale < tM"""
+  risultati = []
+  
+  for i in range(N):
+    tempototale = 0               
+    contatore = 0
+    while (tempototale < tM):
+      u = np.random.uniform(0, 1)
+      tempo = -t0 * np.log(1-u)
+      tempototale += tempo
+      if tempototale < tM :
+        contatore += 1            
+    risultati.append(contatore)
+  return risultati
+
+
+def generatore_poisson(t, N):                   
+  """il contatore mi restituisce un numero che è sostanzialmente per quante volte moltiplico p per un numero casuale"""
+  risultati = []
+  for i in range(N):
+    contatore = 0
+    p = 1
+    while p > np.exp(-t):
+      contatore += 1
+      p *= np.random.uniform(0, 1)     """p mi accumula il prodotto di numeri casuali fino a quando questo non è minore del tempo tra eventi successivi
+                                          di una distribuzione esponenziale, quindi sostanzialmente il numero di eventi tra due eventi successivi"""
+    risultati.append(contatore - 1)
+  return risultati
+
+
+def generatore_gaussiani(Ntoy, Neventi):      
+  """
+  la funzione sfrutta il TCL, calcola le medie e le sigma
+  """
+  medie = []
+  for i in range (Ntoy):
+    eventi = np.random.uniform(0,1,Neventi)
+    toy_stats = np.mean(eventi)
+    medie.append(toy_stats)
+  sigma = []
+  for i in range (len(medie)):
+    s = [np.std(np.random.uniform(0,1,Neventi))]/(np.sqrt(Neventi))
+    sigma.append(s)
+  return medie, sigma
+
+ 
