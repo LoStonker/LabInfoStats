@@ -77,8 +77,8 @@ def 1_data_binning(data, N):		#N è fino a che numero devo considerare
 	andando a considerare i primi N elementi 
 	Se li voglio tutti basta che metto N totale'''
 
-	xmin = min(eventi_gauss[:N])
-	xmax = max(eventi_gauss[:N])
+	xmin = min(data[:N])
+	xmax = max(data[:N])
 	Nbins = sturges(N)
 	binedges = np.linspace(xmin, xmax, Nbins)
 	return binedges
