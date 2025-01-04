@@ -18,12 +18,12 @@ def bisezione_iterativa(f, a, b, tolleranza=1e-6, max_iter=100):
     iterazioni = 0
     while (b - a) / 2 > tolleranza and iterazioni < max_iter:
         c = (a + b) / 2  
-        if f(c) == 0:    """abbiamo trovato lo zero esatto"""
+        if f(c) == 0:    #abbiamo trovato lo zero esatto
             return c
         elif f(a) * f(c) < 0:
-            b = c       """lo zero è nell'intervallo [a, c]"""
+            b = c       #lo zero è nell'intervallo [a, c]
         else:
-            a = c       """lo zero è nell'intervallo [c, b]"""
+            a = c       #lo zero è nell'intervallo [c, b]
         iterazioni += 1
     return (a + b) / 2 
     
@@ -33,9 +33,9 @@ def bisezione_ricorsiva(f, a, b, tolleranza=1e-6):
     if abs(f(c)) < tolleranza or abs(b - a) / 2 < tolleranza:
         return c  
     elif f(a) * f(c) < 0:
-        return bisezione_ricorsiva(f, a, c, tolleranza)  """Ricorsione nell'intervallo [a, c]"""
+        return bisezione_ricorsiva(f, a, c, tolleranza)  #Ricorsione nell'intervallo [a, c]
     else:
-        return bisezione_ricorsiva(f, c, b, tolleranza)  """Ricorsione nell'intervallo [c, b]"""
+        return bisezione_ricorsiva(f, c, b, tolleranza)  #Ricorsione nell'intervallo [c, b]
 
 
 def minimi_ricorsiva(f, a, b, tolleranza=1e-6):
@@ -65,28 +65,10 @@ def massimi_ricorsiva(f, a, b, tolleranza=1e-6):
     maxf = f(max)
     return [max, maxf]
   elif f(x1) > f(x2):
-    return estremi(f, a, x2, tolleranza)
+    return estremi_ricorsiva(f, a, x2, tolleranza)
   else:
-    return estremi(f, x1, b, tolleranza)
+    return estremi_ricorsiva(f, x1, b, tolleranza)
 
-
-def estremi_max(f, a, b, tolleranza=1e-6):
-    phi = (1 + np.sqrt(5)) / 2
-    x1 = a + (b - a) / phi**2
-    x2 = a + (b - a) / phi
-    while (b - a) > tolleranza:
-        if f(x1) > f(x2):
-            b = x2
-            x2 = x1
-            x1 = a + (b - a) / phi**2
-        else:
-            a = x1
-            x1 = x2
-            x2 = a + (b - a) / phi
-    x_max = (a + b) / 2
-    f_max = f(x_max)
-    return [x_max, f_max]
-    
 
 def hit_or_miss_integrate(f, a, b, N, M):      
     """
@@ -106,15 +88,16 @@ def hit_or_miss_integrate(f, a, b, N, M):
   std_integral = np.sqrt(((A_rect**2)/N)*p*(1-p))
   return integral, std_integral
 
+
 def crude_montecarlo_integrate(f, a, b, N):
     """
     Monecarlo Method stima numericamente l'integrale sfruttando E[f(x)]
     Argomenti: la funzione, gli estremi e il numero di elementi N
-        """
+    """
   x = np.linspace(a, b, N)
   f = np.array(f(x))
   mean = np.mean(f)
-  std_mean = np.std(mean)
+  std_mean = np.std(f)
   integrale = (b-a)*(mean + np.sqrt(std_mean/N))
   err = (b - a) * std_mean/(np.sqrt(N))
   return integrale, err
