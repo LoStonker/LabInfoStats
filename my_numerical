@@ -1,0 +1,126 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+"""
+Formule per trovare zeri, massimi e minimi e integrali per via numerica"""
+
+
+def bisezione_iterativa(f, a, b, tolleranza=1e-6, max_iter=100):
+    """
+    Bisezione usa il metodo di bisezione per trovare lo zero di funzione sfruttando 
+    il teorema degli zeri
+    Argomenti = la funzione, gli estremi 'a' e 'b', la tolleranza che posso impostare
+
+    Return = valore medio dell'interallo finale
+    """
+    if f(a) * f(b) >= 0:
+        raise ValueError("La funzione deve avere segni opposti ai due estremi dell'intervallo [a, b].")
+    iterazioni = 0
+    while (b - a) / 2 > tolleranza and iterazioni < max_iter:
+        c = (a + b) / 2  
+        if f(c) == 0:    """abbiamo trovato lo zero esatto"""
+            return c
+        elif f(a) * f(c) < 0:
+            b = c       """lo zero è nell'intervallo [a, c]"""
+        else:
+            a = c       """lo zero è nell'intervallo [c, b]"""
+        iterazioni += 1
+    return (a + b) / 2 
+    
+
+def bisezione_ricorsiva(f, a, b, tolleranza=1e-6):
+    c = (a + b) / 2  # Punto medio
+    if abs(f(c)) < tolleranza or abs(b - a) / 2 < tolleranza:
+        return c  
+    elif f(a) * f(c) < 0:
+        return bisezione_ricorsiva(f, a, c, tolleranza)  """Ricorsione nell'intervallo [a, c]"""
+    else:
+        return bisezione_ricorsiva(f, c, b, tolleranza)  """Ricorsione nell'intervallo [c, b]"""
+
+
+def minimi_ricorsiva(f, a, b, tolleranza=1e-6):
+ """
+ Estremi ricorsiva calcola il minimo di una funzione
+ Argomenti: stessi di Bisezione
+ """
+  phi = (1 + np.sqrt(5)) / 2
+  x1 = a + (b-a)/(phi**2)
+  x2 = a + (b-a)/(phi)
+  if (b-a) < tolleranza:
+    min = (a + b) / 2
+    minf = f(min)
+    return [min, minf]
+  elif f(x1) < f(x2):
+    return estremi(f, a, x2, tolleranza)
+  else:
+    return estremi(f, x1, b, tolleranza)
+
+
+def massimi_ricorsiva(f, a, b, tolleranza=1e-6):
+  phi = (1 + np.sqrt(5)) / 2
+  x1 = a + (b-a)/(phi**2)
+  x2 = a + (b-a)/(phi)
+  if (b-a) < tolleranza:
+    max = (a + b) / 2
+    maxf = f(max)
+    return [max, maxf]
+  elif f(x1) > f(x2):
+    return estremi(f, a, x2, tolleranza)
+  else:
+    return estremi(f, x1, b, tolleranza)
+
+
+def estremi_max(f, a, b, tolleranza=1e-6):
+    phi = (1 + np.sqrt(5)) / 2
+    x1 = a + (b - a) / phi**2
+    x2 = a + (b - a) / phi
+    while (b - a) > tolleranza:
+        if f(x1) > f(x2):
+            b = x2
+            x2 = x1
+            x1 = a + (b - a) / phi**2
+        else:
+            a = x1
+            x1 = x2
+            x2 = a + (b - a) / phi
+    x_max = (a + b) / 2
+    f_max = f(x_max)
+    return [x_max, f_max]
+    
+
+def hit_or_miss_integrate(f, a, b, N, M):      
+"""
+La funzione ha come entrate la funzione f, gli estremi "a" e "b", 
+il numero di eventi da generare e l'estremo superiore M della funzione
+"""
+  x_rand = np.random.uniform(a, b, N)
+  y_rand = np.random.uniform(0, M, N)
+  hits = 0
+
+  hits = y_rand <= f(x_rand)                   
+  successi = np.sum(hits)
+
+  A_rect = (b-a)*M
+  p = successi/N
+  integral = (successi/N)*A_rect
+  std_integral = np.sqrt(((A_rect**2)/N)*p*(1-p))
+  return integral, std_integral
+
+def crude_montecarlo_integrate(f, a, b, N):
+"""
+Monecarlo Method stima numericamente l'integrale sfruttando E[f(x)]
+Argomenti: la funzione, gli estremi e il numero di elementi N
+"""
+  x = np.linspace(a, b, N)
+  f = np.array(f(x))
+  mean = np.mean(f)
+  std_mean = np.std(mean)
+  integrale = (b-a)*(mean + np.sqrt(std_mean/N))
+  err = (b - a) * std_mean/(np.sqrt(N))
+  return integrale, err
+
+
+
+
+
+  
