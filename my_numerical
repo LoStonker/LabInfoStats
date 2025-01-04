@@ -75,18 +75,15 @@ def hit_or_miss_integrate(f, a, b, N, M):
     La funzione ha come entrate la funzione f, gli estremi "a" e "b", 
     il numero di eventi da generare e l'estremo superiore M della funzione
     """
-  x_rand = np.random.uniform(a, b, N)
-  y_rand = np.random.uniform(0, M, N)
-  hits = 0
-
-  hits = y_rand <= f(x_rand)                   
-  successi = np.sum(hits)
-
-  A_rect = (b-a)*M
-  p = successi/N
-  integral = (successi/N)*A_rect
-  std_integral = np.sqrt(((A_rect**2)/N)*p*(1-p))
-  return integral, std_integral
+    x_rand = np.random.uniform(a, b, N)
+    y_rand = np.random.uniform(0, M, N)
+    hits = y_rand <= f(x_rand)
+    successi = np.sum(hits)
+    A_rect = (b - a) * M
+    p = successi / N
+    integral = p * A_rect
+    std_integral = np.sqrt(((A_rect**2) / N) * p * (1 - p))
+    return integral, std_integral
 
 
 def crude_montecarlo_integrate(f, a, b, N):
