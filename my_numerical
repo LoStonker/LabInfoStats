@@ -30,6 +30,8 @@ def bisezione_iterativa(f, a, b, tolleranza=1e-6, max_iter=100):
 
 def bisezione_ricorsiva(f, a, b, tolleranza=1e-6):
     c = (a + b) / 2  # Punto medio
+    if f(a) * f(b) >= 0:
+        raise ValueError("La funzione deve avere segni opposti ai due estremi dell'intervallo [a, b].")
     if abs(f(c)) < tolleranza or abs(b - a) / 2 < tolleranza:
         return c  
     elif f(a) * f(c) < 0:
