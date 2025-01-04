@@ -28,7 +28,7 @@ def TCL(media, sigma, Neventi):
     """
     Funzione che genera eventi gaussiani con il TCL conosciuti media e sigma
     """
-    risultati = [] #Fixed the indentation to match the function definition
+    risultati = [] 
     for i in range(Neventi):
         eventi = 0
         delta = np.sqrt(3*Neventi)*sigma
