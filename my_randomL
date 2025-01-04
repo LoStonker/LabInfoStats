@@ -48,15 +48,15 @@ def inversa_exponential(t0, N):
 
 
 def generatore_poisson(t, N):                   
-	"""il contatore mi restituisce un numero che è sostanzialmente per quante volte moltiplico p per un numero casuale"""
+	#il contatore mi restituisce un numero che è sostanzialmente per quante volte moltiplico p per un numero casuale
 	risultati = []
 	for i in range(N):
 		contatore = 0
 		p = 1
 		while p > np.exp(-t):
 			contatore += 1
-			p *= np.random.uniform(0, 1)     """p mi accumula il prodotto di numeri casuali fino a quando questo non è minore del tempo tra eventi successivi
-                                          			di una distribuzione esponenziale, quindi sostanzialmente il numero di eventi tra due eventi successivi"""
+			p *= np.random.uniform(0, 1)     	#p mi accumula il prodotto di numeri casuali fino a quando questo non è minore del tempo tra eventi successivi
+                                          			 #di una distribuzione esponenziale, quindi sostanzialmente il numero di eventi tra due eventi successivi
 		risultati.append(contatore - 1)
 	return risultati
 
