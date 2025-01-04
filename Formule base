@@ -1,0 +1,46 @@
+import numpy as np
+import matplotlib.pyolot as plt
+import scipy.stats as sc
+
+#Formule base di statistica 
+
+def mediana(numpy_array):
+	b = np.sort(numpy_array)
+	n = len(numpy_array)
+	if n % 2 == 0:
+		median = (b[n//2 -1] + b[n//2]) / 2
+	else:
+		median = b[n//2]
+	return median
+
+def media(x): #MEDIA
+	m = 0.0
+	for i in x:
+    		m += i # += incrementa la variabile somma di i
+    		m /= len(x) # /= divide la variabile m per len(x)
+	return m
+
+def devst(x): #DEVIAZIONE STANDARD
+	s = 0.0
+	N = len(x)
+	m = media(x)
+
+	for i in x:
+  		s = s + (i-m)**2 #attenzione: potevo usare +=
+
+	v = math.sqrt(s/(N-1))
+	return v
+
+def varianza(x):
+	s = 0.0
+	N = len(x)
+	m = media(x)
+	for i in x:
+		s = s + (i-m)**2 #attenzione: potevo usare +=
+	v = math.sqrt(s/(N-1))
+	return v**2
+
+def erroreStandardMedia(x): #ERRORE STANDARD DELLA MEDIA
+	N = len(x)
+	e = devst(x)/math.sqrt(N)
+	return e
