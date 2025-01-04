@@ -48,25 +48,21 @@ def bisezione_ricorsiva(f, a, b, tolleranza=1e-6):
         return bisezione_ricorsiva(f, c, b, tolleranza)
 
 
-def minimi_ricorsiva(f, a, b, tolleranza=1e-6):
-    """
-    Estremi ricorsiva calcola il minimo di una funzione
-    Argomenti: stessi di Bisezione
-    """
-    phi = (1 + np.sqrt(5)) / 2
-    x1 = a + (b-a)/(phi**2)
-    x2 = a + (b-a)/(phi)
-    if (b-a) < tolleranza:
-        min = (a + b) / 2
-        minf = f(min)
-        return [min, minf]
-    elif f(x1) < f(x2):
-        return minimi_ricorsiva(f, a, x2, tolleranza)
-    else:
-        return minimi_ricorsiva(f, x1, b, tolleranza)
+def minimi_sezioneAurea(f, a, b, tolleranza=1e-6):
+  phi = (1 + np.sqrt(5)) / 2
+  x1 = a + (b-a)/(phi**2)
+  x2 = a + (b-a)/(phi)
+  if (b-a) < tolleranza:
+    min = (a + b) / 2
+    minf = f(min)
+    return [min, minf]
+  elif f(x1) < f(x2):
+    return minimi_sezioneAurea(f, a, x2, tolleranza)
+  else:
+    return minimi_sezioneAurea(f, x1, b, tolleranza)
 
 
-def massimi_ricorsiva(f, a, b, tolleranza=1e-6):
+def massimi_sezioneAurea(f, a, b, tolleranza=1e-6):
     phi = (1 + np.sqrt(5)) / 2
     x1 = a + (b-a)/(phi**2)
     x2 = a + (b-a)/(phi)
@@ -75,9 +71,9 @@ def massimi_ricorsiva(f, a, b, tolleranza=1e-6):
         maxf = f(max)
         return [max, maxf]
     elif f(x1) > f(x2):
-        return massimi_ricorsiva(f, a, x2, tolleranza)
+        return massimi_sezioneAurea(f, a, x2, tolleranza)
     else:
-        return massimi_ricorsiva(f, x1, b, tolleranza)
+        return massimi_sezioneAurea(f, x1, b, tolleranza)
 
 
 def hit_or_miss_integrate(f, a, b, N, M):      
@@ -109,8 +105,3 @@ def crude_montecarlo_integrate(f, a, b, N):
     err = (b - a) * std_dev / np.sqrt(N)
     return integral, err
 
-
-
-
-
-  
