@@ -1,5 +1,5 @@
 import numpy as np
-import matplotlib.pyolot as plt
+import matplotlib.pyplot as plt
 import scipy.stats as sc
 from math import ceil, floor
 """
