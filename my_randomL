@@ -24,18 +24,21 @@ def generatore_casual_pdf(pdf, n, xmin, xmax, N):
 	return samples, x, pdf_values
 
 
-def TCL(media, sigma, N):                
-	"""
-	Funzione che genera e calcola le medie di sample di numeri casuali conosciuti media e sigma
-	"""
-	eventi = 0
-	delta = np.sqrt(3*N)*sigma
-	xmin = media - delta
-	xmax = media + delta
-	for i in range (N):
-		eventi += np.random.uniform(xmin, xmax)
-	eventi /= N
-	return eventi
+def TCL(media, sigma, Neventi):                
+    """
+    Funzione che genera eventi gaussiani con il TCL conosciuti media e sigma
+    """
+    risultati = [] #Fixed the indentation to match the function definition
+    for i in range(Neventi):
+        eventi = 0
+        delta = np.sqrt(3*Neventi)*sigma
+        xmin = media - delta
+        xmax = media + delta
+        for i in range (Neventi):
+            eventi += np.random.uniform(xmin, xmax)
+        eventi /= Neventi
+        risultati.append(eventi) 
+    return risultati 
 
 
 def inversa_exponential(t0, N):
