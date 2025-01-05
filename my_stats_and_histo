@@ -94,7 +94,7 @@ def one_data_binning(data, N):		#N è fino a che numero devo considerare
 	return binedges
 
 
-def plot_histogram(data, bins, label, color, edgescolor, xlabel, ylabel, overlay=None, density=True):
+def plot_histogram(data, bins, label, color, edgecolor, xlabel, ylabel, overlay=None, density=True):
     """
     Crea un istogramma personalizzato con opzione di sovrapporre una curva teorica.
     Argomenti:
