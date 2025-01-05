@@ -86,4 +86,49 @@ def generatore_gaussiani(Ntoy, Neventi):
     return medie, sigma
 
 
+def hit_or_miss_generator(f, a, b, m, M, N):
+  """
+  Argomenti: 
+  f = funzione, [a, b] = estremi della base del rettangolo, 
+  [m, M] = estremi altezza del rettangolo (spesso m = 0), N = numeri da generare
+  """
+  sample = []
+  hits = 0
+  x_values = np.random.uniform(a, b, N)
+  y_values = np.random.uniform(m, M, N)
+  for i in range(N):
+    if y_values[i] <= f(x_values[i]):
+      sample.append(x_values[i])
+      hits += 1
+  Area_rettangolo = (hits/N)*(b-a)*(M-m)
+  return sample, Area_rettangolo
+
+
+def try_and_catch_generator(f, a, b, M, N):
+  """
+  Argomenti: pdf f, (a, b) insieme di generazione, M=valore tale per cui
+  f è minore di M, N=numero eventi da generare
+
+  Return: sample di eventi
+  """
+  sample = []
+  x = np.random.uniform(a, b, N)
+  u = np.random.uniform(0, 1, N)
+  for i in range(N):
+    if u[i] <= f(x[i])/M:
+      sample.append(x[i])
+  return sample
+
+
+def TCL_pdf(f, a, b, Neventi):
+  """
+  Argomenti: una pdf f, (a,b) intervallo di generazione
+  """
+  sample = []
+  n = 10
+  for i in range(Neventi):
+    media = np.mean(mr.generatore_casual_pdf(f, n, a, b, n))
+    sample.append(media)
+  return sample
+
  
