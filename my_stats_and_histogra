@@ -131,14 +131,14 @@ def loglikelihood(pdf, theta, sample):    #Logaritmo della likelihood
 	return (risultato)
 
 
-def maximumlikelihood(likelihood, pdf, sample, a, b, tolleranza=1e-6):
+def maximumlikelihood(loglikelihood, pdf, sample, a, b, tolleranza=1e-6):
 	phi = (1 + np.sqrt(5)) / 2
 	x1 = a + (b - a) / phi**2
 	x2 = a + (b - a) / phi
 
 	while (b - a) > tolleranza:
-		L1 = likelihood(pdf, x1, sample)
-		L2 = likelihood(pdf, x2, sample)
+		L1 = loglikelihood(pdf, x1, sample)
+		L2 = loglikelihood(pdf, x2, sample)
 		if L1 > L2:
 			b = x2
 			x2 = x1
