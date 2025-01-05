@@ -116,6 +116,40 @@ def plot_histogram(data, bins, label, color, edgecolor, xlabel, ylabel, overlay=
     plt.show()
 
 
+def likelihood(pdf, theta, sample):
+	risultato = 0                       # Somma dei logaritmi per evitare sottoflusso numerico
+	for x in sample:
+		risultato += np.log(pdf(x, theta))
+	return np.exp(risultato)
+
+
+def loglikelihood(pdf, theta, sample):    #Logaritmo della likelihood
+	risultato = 0
+	for x in sample:
+		if (pdf(x, theta) > 0):
+			risultato += np.log(pdf(x, theta))
+	return (risultato)
+
+
+def maximumlikelihood(likelihood, pdf, sample, a, b, tolleranza=1e-6):
+	phi = (1 + np.sqrt(5)) / 2
+	x1 = a + (b - a) / phi**2
+	x2 = a + (b - a) / phi
+
+	while (b - a) > tolleranza:
+		L1 = likelihood(pdf, x1, sample)
+		L2 = likelihood(pdf, x2, sample)
+		if L1 > L2:
+			b = x2
+			x2 = x1
+			x1 = a + (b - a) / phi**2
+		else:
+			a = x1
+			x1 = x2
+			x2 = a + (b - a) / phi
+	x_max = (a + b) / 2
+	return x_max
+
 
 
 
