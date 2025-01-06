@@ -50,6 +50,16 @@ def erroreStandardMedia(x): 	#ERRORE STANDARD DELLA MEDIA
 	return e
 
 
+def errore_varianza(array):
+  """
+  Dato un array, mi trova l'errore sulla varianza
+  """
+  var = np.var(array)
+  N = len(array)
+  var_err = np.sqrt(2*(var**2))/(N-1)
+  return var_err
+
+
 def percentile(x,p):
     """A function that determines the value above which lies the a certain fraction of the values.
     Args:
