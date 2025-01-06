@@ -131,4 +131,43 @@ def TCL_pdf(f, a, b, Neventi):
     sample.append(media)
   return sample
 
+
+def generate_gauss_Box_Muller(Neventi, mu, sigma):
+  """
+  La funzione genera Neventi gaussiani con media mu e dev sigma
+  """
+  sample = []
+  g1_tot = []
+  g2_tot = []
+  transform = lambda x : x * sigma + mu 
+  #Moltiplicare per sigma mi trasforma la larghezza da 1 a sigma e aggiungo mu per traslare
+  for i in range(N):
+    x1 = np.random.uniform(0, 1)
+    x2 = np.random.uniform(0, 1)
+    p = np.sqrt(-2*np.log(x1))
+    g1 = p*np.cos(2*np.pi*x2)
+    g2 = p*np.sin(2*np.pi*x2)
+    g1_tot.append(transform(g1))
+    g2_tot.append(transform(g2))
+  sample = np.concatenate([g1_tot, g2_tot])
+  return sample
+
+
+def generate_gauss_bm(Neventi):
+  """
+  La funzione genera Neventi gaussiani
+  """
+  sample = []
+  g1_tot = []
+  g2_tot = []
+  for i in range(N):
+    x1 = np.random.uniform(0, 1)
+    x2 = np.random.uniform(0, 1)
+    p = np.sqrt(-2*np.log(x1))
+    g1 = p*np.cos(2*np.pi*x2)
+    g2 = p*np.sin(2*np.pi*x2)
+    g1_tot.append(g1)
+    g2_tot.append(g2)
+  sample = np.concatenate([g1_tot, g2_tot])
+  return sample
  
