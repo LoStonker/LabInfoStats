@@ -105,3 +105,18 @@ def crude_montecarlo_integrate(f, a, b, N):
     err = (b - a) * std_dev / np.sqrt(N)
     return integral, err
 
+
+def MC_bidimensionale(f, xmin, xmax, ymin, ymax, M, N):
+  """
+  La funzione calcola un integrale di una funzione in due variabili
+  """
+  x = np.random.uniform(xmin, xmax, N)
+  y = np.random.uniform(ymin, ymax, N)
+  z = np.random.uniform(0, M, N)
+  hits = z <= f(x, y)
+  successi = np.sum(hits)
+  A_rect = (xmax - xmin) * (ymax - ymin) * M
+  p = successi / N
+  integral = p * A_rect
+  std_integral = np.sqrt(((A_rect**2) / N) * p * (1 - p))
+  return integral, std_integral
