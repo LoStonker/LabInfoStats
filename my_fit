@@ -1,0 +1,98 @@
+import numpy as np
+from iminuit import Minuit
+from iminuit.cost import LeastSquares
+from iminuit.cost import ExtendedBinnedNLL
+from iminuit.cost import UnbinnedNLL
+from iminuit.cost import BinnedNLL
+from scipy.stats import chi2
+import scipy.stats as sc
+
+"""
+Quando devo fare il chi2 con scipy, prima devo definire 
+i dof(gradi di libertà):
+  ndof = len(redshift) - len(params)
+e il p-value:
+  p_value = 1. - sc.chi2.cdf (chi2_min, df = ndof)
+dove chi_min = m.fval, cioè il valore minimo del chiquadro dopo il processo di ottimizzazione 
+QUINDI: devo prima ottimizzare con Minuit e migrad, poi posso accedere al valore di fval
+"""
+
+
+
+
+"""
+Quando devo fittare dei dati non binnati con un modello, 
+posso utilizzare i LeastSquares(x, y, s_y, modello). Il modello dei LeastSquares
+prende la PDF, a differenza degli altri. 
+  minimi = LeastSquares()
+  m = Minuit(minimi, 'valore iniziali dei miei parametri')
+  m.migrad()
+  m.hesse()
+  parametro_fit = m.values['parametro']
+  parametro_err = m.errors['parametro']
+  print(f"parametro : {parametro_fit:.2f} ± {parametro_err:.2f}")
+
+Nel caso abbia più modelli e quindi più parametri, posso sistemarli in un array in questo modo
+  modelli = [
+      (D_lineare, {"H0": H0_start}),
+      (D_sus, {"H": H0_start, "q": -1}),
+      (D_cubic, {"Hc": H0_start, "qc": -1}),]       
+
+Così ho messo in un dictionary tutti i parametri, e accedo ad essi usando   **params
+"""
+
+
+
+"""
+Quando utilizzo misure binnate, posso usare o BinnedNLL o ExtendedBinnedNLL
+La differenza è nel fatto che la Extended serve quando il numero di misure Ntot
+non è noto o fixed, ma fa parte del fit
+Uso BinnedNLL invece quando il numero di misure è noto e fisso 
+Sia la Extended che la Binned usano come funzione modello la CDF, del tipo:
+  def model_cdf(bin_edges, media, sigma):
+    return sc.norm.cdf(bin_edges, media, sigma)
+bin_edges va SEMPRE in prima posizione, in quanto non è mai (almeno credo) un parametro
+Inoltre è meglio usare la funzione di numpy per i binedges
+  bin_content, bin_edges = np.histogram(sample, Nbins=sturges(len(sample)), range = (min(sample, max(sample)))
+
+Definisco poi una funzione costo, del tipo:
+  funzione_costo = BinnedNLL(bin_content, bin_edges, model_cdf)
+Uso poi Minuit, con la funzione costo e i parametri; nel mio esempio:
+  m = Minuit(funzione_costo, media = np.mean(sample), sigma = np.std(sample))
+Poi faccio la roba di iminuit
+  m.migrad()
+  m.minos()
+  display(m)      OPPURE print(m.valid)
+Per il p-value uso sempre il chi2
+  if 1. - chi2.cdf (mL.fval, df = m.ndof) > 0.10:
+    print ('the event sample is compatible with a Gaussian distribution')
+
+QUINDI, a parte trattare Ntot come un parametro (quindi cambiano anche i gradi di libertà), non 
+ci sono differenze pratiche tra Binned ed Extended
+"""
+
+"""
+Quando non ho misure binnate posso anche in questo caso usare la NLL, solamente che uso la UnbinnedNLL
+la Unbinned usa la PDF di una distribuzione, ad esempio:
+  def model(x, media, sigma)
+    return sc.norm.pdf(x, media, sigma)
+  cost_function = Unbinned(sample, model)
+  m = Minuit(cost_function, media = np.mean(sample), sigma = np.std(sample))
+  m.migrad()
+  assert m.valid
+  display(m)
+
+Nel caso voglia mettere un limite devo fare:
+  m.limits['sigma'] = (0, nNone)
+In questo modo ho lasciato libera la sigma e messo a zero la media
+"""
+
+
+
+
+
+
+
+
+
+
