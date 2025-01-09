@@ -57,7 +57,7 @@ def errore_varianza(array):
   """
   var = np.var(array)
   N = len(array)
-  var_err = np.sqrt(2*(var**2))/(N-1)
+  var_err = np.sqrt(2*(var**2)/(N-1))
   return var_err
 
 
@@ -92,17 +92,15 @@ def two_data_binning(data1, data2):
 	return bin_edges
 
 
-def one_data_binning(data, N):		#N è fino a che numero devo considerare
-	"""
-	Questa funzione dato un solo set di dati mi trova il binning ottimale
-	andando a considerare i primi N elementi 
-	Se li voglio tutti basta che metto N totale"""
-
-	xmin = min(data[:N])
-	xmax = max(data[:N])
-	Nbins = sturges(N)
-	binedges = np.linspace(xmin, xmax, Nbins)
-	return binedges
+def one_data_binning(data):
+  	"""
+	Preso un array di dati, mi produce i binedges e il bin_content;
+  	Se voglio i primi N elementi, devo fare data_new = data[:N]
+  	"""
+  	N = len(data)
+  	Nbins = sturges(N)
+  	binnaggio, binedges = np.histogram(data, bins = Nbins, range = (min(data), max(data)))
+  	return binnaggio, binedges
 
 
 def plot_histogram(data, bins, label, color, edgecolor, xlabel, ylabel, overlay=None, density=True):
