@@ -76,20 +76,23 @@ def massimi_sezioneAurea(f, a, b, tolleranza=1e-6):
         return massimi_sezioneAurea(f, x1, b, tolleranza)
 
 
-def hit_or_miss_integrate(f, a, b, N, M):      
+def hit_or_miss_integrate(f, a, b, m, M, N):
     """
-    La funzione ha come entrate la funzione f, gli estremi "a" e "b", 
-    il numero di eventi da generare e l'estremo superiore M della funzione
+    Argomenti: funzione f, [a, b] base rettangolo, [m, M] altezza rettangolo,
+    N numero di x e y generati
     """
-    x_rand = np.random.uniform(a, b, N)
-    y_rand = np.random.uniform(0, M, N)
-    hits = y_rand <= f(x_rand)
+    x = np.random.uniform(a, b, N)
+    y = np.random.uniform(m, M, N)
+    hits = 0
+    for i in range(N):
+        if y[i] <= f(x[i]):
+            hits += 1
     successi = np.sum(hits)
-    A_rect = (b - a) * M
+    A_rect = (b - a) * (M-m)
     p = successi / N
     integral = p * A_rect
     std_integral = np.sqrt(((A_rect**2) / N) * p * (1 - p))
-    return integral, std_integral
+    return integral, std_integral 
 
 
 def crude_montecarlo_integrate(f, a, b, N):
