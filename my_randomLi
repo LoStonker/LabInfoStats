@@ -38,7 +38,7 @@ def TCL(media, sigma, Neventi):
             eventi += np.random.uniform(xmin, xmax)
         eventi /= Neventi
         risultati.append(eventi) 
-    return risultati 
+    return np.array(risultati) 
 
 
 def inversa_exponential(t0, N):
@@ -61,7 +61,7 @@ def generatore_poisson(t, N):
 			p *= np.random.uniform(0, 1)     	#p mi accumula il prodotto di numeri casuali fino a quando questo non è minore del tempo tra eventi successivi
                                           			#di una distribuzione esponenziale, quindi sostanzialmente il numero di eventi tra due eventi successivi
 		risultati.append(contatore - 1)
-	return risultati
+	return np.array(risultati)
 
 
 def generatore_gaussiani(Ntoy, Neventi):      
@@ -101,10 +101,10 @@ def hit_or_miss_generator(f, a, b, m, M, N):
       sample.append(x_values[i])
       hits += 1
   Area_rettangolo = (hits/N)*(b-a)*(M-m)
-  return sample, Area_rettangolo
+  return np.array(sample), Area_rettangolo
 
 
-def try_and_catch_generator_v2(f, a, b, M, N):
+def try_and_catch_generator(f, a, b, M, N):
     """
     Argomenti: 
     f: la pdf, funzione da campionare
@@ -115,20 +115,20 @@ def try_and_catch_generator_v2(f, a, b, M, N):
     Return: sample di eventi generati tramite il metodo Try-and-Catch
     """
     sample = []
-    attempts = 0  # Contatore per tentativi
-    while len(sample) < N:  # Fino a che non raggiungi N eventi
-        x = np.random.uniform(a, b)  # Genera un singolo valore x
-        u = np.random.uniform(0, 1)  # Un numero casuale tra 0 e 1
-        if u <= f(x)/M:  # Se il punto è sotto la curva
-            sample.append(x)  # Aggiungi il punto alla lista dei campioni
+    attempts = 0  
+    while len(sample) < N:  
+        x = np.random.uniform(a, b)  
+        u = np.random.uniform(0, 1)  
+        if u <= f(x)/M:  
+            sample.append(x)  
         attempts += 1
         if attempts >= 100000:  # Massimo numero di tentativi
             print("Maximum attempts reached!")
             break
-    return sample
+    return np.array(sample)
 
 
-def try_and_catch_generator(f, a, b, M, N):
+def try_and_catch_generator_v2(f, a, b, M, N):
   """
   Argomenti: pdf f, (a, b) insieme di generazione, M=valore tale per cui
   f è minore di M, N=numero eventi da generare
@@ -153,7 +153,7 @@ def TCL_pdf(f, a, b, Neventi):
   for i in range(Neventi):
     media = np.mean(mr.generatore_casual_pdf(f, n, a, b, n))
     sample.append(media)
-  return sample
+  return np.array(sample)
 
 
 def generate_gauss_Box_Muller(Neventi, mu, sigma):
