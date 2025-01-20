@@ -1,0 +1,1104 @@
+Definisci tutte le funzioni in un file seperato
+Importa solamente le librerie necessarie 
+non fare errori del cazzo come quello del dominio
+Se non usi jupyter usa il main
+
+
+
+TEMA D'ESAME 1
+import numpy as np
+import matplotlib.pyplot as plt
+from iminuit import Minuit
+from iminuit.cost import LeastSquares
+from iminuit.cost import ExtendedBinnedNLL
+from iminuit.cost import UnbinnedNLL
+from iminuit.cost import BinnedNLL
+from scipy.stats import chi2
+import scipy.stats as sc
+import my_stats_and_histogr as ms
+import my_randomLi as mr
+import my_numerical as mn
+
+#Domanda 1
+data = np.loadtxt('SuperNovae.txt')
+# Separare le colonne in tre array
+redshift = data[:, 0]   # Prima colonna
+distanza = data[:, 1]   # Seconda colonna
+errore = data[:, 2]     # Terza colonna
+
+#Domanda 2
+#Si faccia il grafico dei dati mettendo sull’asse x il redshift z e sull’asse y la distanza DL, includendo gli errori nel grafico.
+#Plotting
+fig, ax = plt.subplots(nrows=1, ncols=1)
+plt.plot(redshift, distanza, label = 'Distanza in funzione del redshift')
+plt.errorbar(redshift, distanza, yerr = errore, fmt="o", label="Dati", color="blue")
+plt.show()
+
+#Domanda 3
+#Si esegua un fit dei dati utilizzando il modello lineare e si stampi la costante di Hubble incluso il suo errore
+def D_lineare(z, H0):
+  c = 3e5
+  return (z*c)/H0
+
+def D_sus(z, H, q):
+  c = 3e5
+  return (c/H)*(z + 1/2*(1-q)*(z**2))
+
+def D_cubic(z, Hc, qc):
+    c = 3e5
+    fact = c * z / Hc
+    mult = 1 + 0.5 * (1-qc) * z - 1 / 6 * (1 - qc - 3*qc**2 + 1) * z**2
+    return fact * mult
+
+c = 3e5
+def init_H0(d, z):
+    c = 3e5
+    return c * z / d
+H0_start = np.mean(init_H0(distanza[redshift<0.1], redshift[redshift<0.1]))
+
+minimi_quadrati = LeastSquares(redshift, distanza, errore, D_lineare)
+m = Minuit(minimi_quadrati, H0=H0_start)
+m.migrad()
+m.hesse()   # Calcolo incertezze
+#Valori ottimali
+H0_fit = m.values["H0"]
+H0_err = m.errors["H0"]
+print(f"H0 : {H0_fit:.2f} ± {H0_err:.2f}")
+
+#Fit con altro modello
+minimi_quadrati = LeastSquares(redshift, distanza, errore, D_sus)
+m = Minuit(minimi_quadrati, H=H0_start, q=-1)
+m.migrad()
+m.hesse()   # Calcolo incertezze
+#Valori ottimali
+H_fit = m.values["H"]
+H_err = m.errors["H"]
+q_fit = m.values['q']
+q_err = m.errors['q']
+print(f"H : {H_fit:.2f} ± {H_err:.2f}")
+print(f"q : {q_fit:.2f} ± {q_err:.2f}")
+
+#Fit cubico
+minimi_quadrati = LeastSquares(redshift, distanza, errore, D_cubic)
+m = Minuit(minimi_quadrati, Hc=H0_start, qc=-1)
+m.migrad()
+m.hesse()   # Calcolo incertezze
+#Valori ottimali
+Hc_fit = m.values["Hc"]
+Hc_err = m.errors["Hc"]
+qc_fit = m.values['qc']
+qc_err = m.errors['qc']
+print(f"H_cubic : {Hc_fit:.2f} ± {Hc_err:.2f}")
+print(f"q_cubic : {qc_fit:.2f} ± {qc_err:.2f}")
+
+#Plotting
+fig, ax = plt.subplots(nrows=1, ncols=1)
+plt.plot(redshift, D_lineare(redshift, H0_fit), label = 'Distanza in funzione del redshift')
+plt.plot(redshift, D_sus(redshift, H_fit, q_fit), label = 'Fit quadratico')
+plt.plot(redshift, D_cubic(redshift, Hc_fit, qc_fit), label = 'Fit cubico')
+plt.show()
+
+z = np.linspace(0, np.amax(redshift), 1000)
+fig, ax = plt.subplots()
+ax.errorbar(redshift, distanza, yerr=errore, marker='o', linestyle='none')
+ax.plot(z, D_lineare(z, H0_fit), label = 'Lineare')
+ax.plot(z, D_sus(z, H_fit, q_fit), label = 'Quadratico')
+ax.plot(z, D_cubic(z, Hc_fit, qc_fit), label = 'Cubico')
+ax.set_xlabel('Redshift')
+ax.set_ylabel('Distanza [MPc]')
+ax.legend()
+
+#Per determinare quale fit si adatta meglio ai dati vado di test del Chi2
+H0_finale = 0
+p_value_finale = 0
+best_model = 0
+count = 0
+modelli = [
+    (D_lineare, {"H0": H0_start}),
+    (D_sus, {"H": H0_start, "q": -1}),
+    (D_cubic, {"Hc": H0_start, "qc": -1}),
+]
+
+for mod, params in modelli:
+    minimi_quadrati = LeastSquares(redshift, distanza, errore, mod)
+    m = Minuit(minimi_quadrati, **params)  #** mi serve per trascrivere tutto ciò che un dictionary
+    m.migrad()
+    m.hesse()
+
+    chi2_val = []
+    chi2_val1 = m.fval
+    chi2_val.append(chi2_val1)
+    print(chi2_val)
+    ndof = len(redshift) - len(params)
+    p_value = 1. - chi2.cdf (chi2_val1, df = ndof)
+
+    if p_value > p_value_finale:
+        p_value_finale = p_value
+        # Assign the appropriate H0 value based on the current model
+        if mod == D_lineare:
+            H0_finale = m.values["H0"]
+            count += 1
+        elif mod == D_sus:
+            H0_finale = m.values["H"]
+            count += 1
+        elif mod == D_cubic:
+            H0_finale = m.values["Hc"]
+            count += 1
+
+print(f"Il migliore modello ha un p-value di {p_value_finale:.3f}")
+print(f"Il valore ottimale della costante di Hubble (H0) è {H0_finale:.2f}")
+
+#Utilizzando la generazione di numeri casuali uniformi, si generi un elenco di 30 indici nelle liste dei
+#dati in ingresso a partire dal quali si costruisca un loro sotto-campione, sul quale rifare il fit con il modello 2
+
+#q = (3*omega)/2 - 1    Devo trovare omega con montecarlo method, utilizzo il teorema centrale del limite per generare q
+Ntoys = 10000
+q = qc_fit  #questi sono quelli determinati al punto precedente
+s_q = qc_err
+N = 100
+omega = []
+
+def TCL(media, sigma, N):                 #Funzione che genera e calcola le medie di sample di numeri casuali conosciuti media e sigma
+    eventi = 0
+    delta = np.sqrt(3*N)*sigma
+    xmin = media - delta
+    xmax = media + delta
+    for i in range (N):
+      eventi += np.random.uniform(xmin, xmax)
+    eventi /= N
+    return eventi
+
+for i in range(Ntoys):
+  qt = TCL(q, s_q, N)
+  omega.append((2/3)*(qt+1))
+
+omega.sort()
+print(f'Il valore mediano di Omega è {omega[int(len(omega) * 0.5)]:.4f}')
+print(f'Il valore di Omega è compreso tra {omega[int(len(omega) * 0.1)]:.4f} e {omega[int(len(omega) * 0.9)]:.4f}')
+
+
+
+
+
+TEMA D'ESAME 2
+#Domanda 1
+#Definire una funzione che traccia un andamento parabolico in funzione di x nell'intervallo (0, 10)
+# con a=3, b=2, c=1
+def f(x, a, b, c):
+  return a + b*x + c*x**2
+parametri = [3, 2, 1]
+a = 3
+b = 2
+c = 1
+
+x_plot = np.linspace(0, 10, 1000)
+y_func = f(x_plot, a, b, c)
+plt.plot(x_plot, y_func, label='Grafico di f(x)', color='r')
+if callable(plt.grid):
+    plt.grid(True)  # Enable grid if plt.grid is a function
+else:
+    # If plt.grid is not callable, reset it
+    plt.grid = plt.gca().grid  # Reset plt.grid to its original function
+    plt.grid(True)  # Enable grid
+    print("Warning: plt.grid was overwritten and has been reset.")
+plt.show()
+
+#Domanda 2
+#Si generino 10 punti distribuiti in modo pseudo casuale secondo una distribuzione uniforme in (0, 10)
+#e si associ ad ognuno di essi una coordinata   yi = f(x, a, b, c) + ei
+#dove ei è un numero pseudo casuale generato secondo una gaussiana con media 0 e sigma 10
+x_sos = np.random.uniform(0, 10, 10)
+x = np.sort(x_sos)
+print(x)
+sigma_epsilon = 10
+epsilon = mr.TCL(0, sigma_epsilon, 10)
+y = f(x, a, b, c) + epsilon
+plt.errorbar(x, y, xerr=0, yerr=sigma_epsilon, marker='o', linestyle='')
+
+#Domanda 3
+#Si faccia il fit del campione così generato con la funzione f
+minimi_quadrati = LeastSquares(x, y, sigma_epsilon, f)
+m = Minuit(minimi_quadrati, a=0, b=1, c=1)
+m.migrad()
+m.hesse()
+a_fit = m.values["a"]
+a_err = m.errors["a"]
+b_fit = m.values["b"]
+b_err = m.errors["b"]
+c_fit = m.values["c"]
+c_err = m.errors["c"]
+print(f"a : {a_fit:.2f} ± {a_err:.2f}")
+print(f"b : {b_fit:.2f} ± {b_err:.2f}")
+print(f"c : {c_fit:.2f} ± {c_err:.2f}")
+x_values = np.linspace(0, 10, 1000)
+plt.plot(x_values, f(x_values, a_fit, b_fit, c_fit), color='green')
+plt.show()
+
+#Domanda 4
+#Si costruisca la distribuzione del Q2 con i toy experiment
+Ntoys = 10000
+def distribuzione_Q2(f, Ntoys):
+  Q2 = []
+  for i in range(Ntoys):
+    x_coord = np.random.uniform(0, 10, 10)
+    x = np.sort(x_coord)
+    epsilon = mr.TCL(0, 10, 10)
+    y = f(x, a, b, c) + epsilon
+    s_y = sigma_epsilon
+    minimi_quadrati = LeastSquares(x, y, sigma_epsilon, f)
+    m = Minuit(minimi_quadrati, a=0, b=1, c=1)
+    m.migrad()
+    Q2.append(m.fval)    #non devo inserire l'oggetto di iminuit
+  return Q2
+
+sample_Q2 = distribuzione_Q2(f, Ntoys)
+_, binedges = ms.one_data_binning(sample_Q2)
+plt.hist(sample_Q2, bins = binedges, label='distribuzione Q2', color='green', edgecolor='black')
+plt.show()
+
+#Domanda 5
+#Si rifaccino i due punti precedenti generando gli epsilon con una distribuzione uniforme e con la stessa deviazione standard
+x_sos = np.random.uniform(0, 10, 10)
+x = np.sort(x_sos)
+print(x)
+sigma_epsilon = 10
+epsilon = np.random.uniform(0, sigma_epsilon, 10)
+y = f(x, a, b, c) + epsilon
+plt.errorbar(x, y, xerr=0, yerr=sigma_epsilon, marker='o', linestyle='')
+
+minimi_quadrati = LeastSquares(x, y, sigma_epsilon, f)
+m = Minuit(minimi_quadrati, a=0, b=1, c=1)
+m.migrad()
+m.hesse()
+a_fit = m.values["a"]
+a_err = m.errors["a"]
+b_fit = m.values["b"]
+b_err = m.errors["b"]
+c_fit = m.values["c"]
+c_err = m.errors["c"]
+print(f"a : {a_fit:.2f} ± {a_err:.2f}")
+print(f"b : {b_fit:.2f} ± {b_err:.2f}")
+print(f"c : {c_fit:.2f} ± {c_err:.2f}")
+x_values = np.linspace(0, 10, 1000)
+plt.plot(x_values, f(x_values, a_fit, b_fit, c_fit), color='green')
+plt.show()
+
+Ntoys = 10000
+def distribuzione_Q2_unif(f, Ntoys):
+  Q2 = []
+  for i in range(Ntoys):
+    x_coord = np.random.uniform(0, 10, 10)
+    x = np.sort(x_coord)
+    epsilon = np.random.uniform(0, 10, 10)
+    y = f(x, a, b, c) + epsilon
+    s_y = sigma_epsilon
+    minimi_quadrati = LeastSquares(x, y, sigma_epsilon, f)
+    m = Minuit(minimi_quadrati, a=0, b=1, c=1)
+    m.migrad()
+    Q2.append(m.fval)    #non devo inserire l'oggetto di iminuit
+  return Q2
+
+sample_Q2_unif = distribuzione_Q2_unif(f, Ntoys)
+_, binedges2 = ms.one_data_binning(sample_Q2_unif)
+plt.hist(sample_Q2, bins = binedges2, label='distribuzione Q2 con epsilon uniforme', color='blue', histtype='step')
+sample_Q2 = distribuzione_Q2(f, Ntoys)
+_, binedges = ms.one_data_binning(sample_Q2)
+plt.hist(sample_Q2, bins = binedges, label='distribuzione Q2', color='green', edgecolor='black')
+plt.show()
+
+#Domanda 6
+#In funzione della distribuzione ottenuta per Q2_unif, determinare la soglia oltre il quale rigettare il valore del fit
+#per ottenere un p-value maggiore o uguale a 10
+Q2 = np.sort(sample_Q2_unif)
+N_soglia = 9000  #questo perchè voglio un p-value del 10%, dato che li ho ordinati prendo i primi 9000
+print('Valore di Q2 soglia: ', Q2[9000])
+
+Q2_rigettati = [val for val in Q2 if val > Q2[9000]]
+_, binedges_rigettati = ms.one_data_binning(Q2_rigettati)
+_, binedges_presi = ms.one_data_binning(Q2[:9000])
+
+fig, ax = plt.subplots (nrows = 1, ncols = 1)
+ax.hist (Q2,
+         bins = binedges_presi,
+         color = 'blue',
+         label = 'test statistics',
+         histtype='step',
+        )
+ax.hist (Q2_rigettati,
+         bins = binedges_rigettati,
+         color = 'lightblue',
+         label = 'rigettati',
+         histtype='step',
+        )
+ax.set_title ('Q2 distributions', size=14)
+ax.set_xlabel ('Q2')
+ax.set_ylabel ('event counts per bin')
+ax.legend ()
+plt.show()
+
+
+
+
+
+TEMA D'ESAME 3
+#Domanda 1
+#Data f(x)= A*(cosx)**2 per x in (0, 3/2pi) e 0 altrimenti si calcoli il valore di A per fare in modo che A sia correttamente normalizzata
+#con il metodo hit_or_miss. Il metodo consiste nel creare un rettangolo che racchiuda la funzione f, generare numeri uniformamente distribuiti
+#all'interno e conto quanti cadono sotto la curva. Detta [a, b] la base del rettangolo e [0, M] la sua altezza, genero x tra [a, b]
+#e genero uniformemente y tra 0 e M e devo contare quanti soddisfano y < f(x) e calcolo l'area stimata  A = (hits/N)*(b-a)*M
+
+def f(x):
+  if 0 <= x <= (3/2)*np.pi:
+    return (np.cos(x)**2)
+  else:
+    return 0
+
+def hit_or_miss_generator(f, a, b, m, M, N):
+  """
+  Argomenti:
+  f = funzione, [a, b] = estremi della base del rettangolo,
+  [m, M] = estremi altezza del rettangolo (spesso m = 0), N = numeri da generare
+  """
+  sample = []
+  hits = 0
+  x_values = np.random.uniform(a, b, N)
+  y_values = np.random.uniform(m, M, N)
+  for i in range(N):
+    if y_values[i] <= f(x_values[i]):
+      sample.append(x_values[i])
+      hits += 1
+  Area_rettangolo = (hits/N)*(b-a)*(M-m)
+  return sample, Area_rettangolo
+
+a = 0
+b = (3/2)*np.pi
+N = 10000
+data, area = hit_or_miss_generator(f, a, b, 0, 1, N)
+print("L'area vale: ", area)
+print("Il fattore di normalizzazione è: ", 1/area)
+A = 1/area
+def fn(x):
+  A = 1/area
+  return np.where(np.logical_and(0 <= x, x <= (3/2)*np.pi), A*(np.cos(x)**2), 0)
+
+#Plotting della funzione
+x_coord = np.linspace(0, 1.5*np.pi, N)
+#plt.plot(x_coord, fn(x_coord), label='pdf', color='blue', linewidth=5)
+_, binedges = ms.one_data_binning(data)
+grafico = ms.plot_histogram(data, binedges, label='histogram', color='green', edgecolor='black', xlabel='data', ylabel='sos', overlay=fn)
+
+#Domanda 2
+#Si generi un insieme di 10000 numeri pseudo-casuali xi distribuiti secondo la pdf f(x) utilizzando
+#il metodo try-and-catch. Si mostri la distribuzione in un istogramma
+def try_and_catch_generator(f, a, b, M, N):
+  """
+  Argomenti: pdf f, (a, b) insieme di generazione, M=valore tale per cui
+  f è minore di M, N=numero eventi da generare
+
+  Return: sample di eventi
+  """
+  sample = []
+  x = np.random.uniform(a, b, N)
+  u = np.random.uniform(0, 1, N)
+  for i in range(N):
+    if u[i] <= f(x[i])/M:
+      sample.append(x[i])
+  return sample
+
+a = 0
+b = (3/2)*np.pi
+N = 10000
+def fn(x):
+  A = 1/area
+  return np.where(np.logical_and(0 <= x, x <= (3/2)*np.pi), A*(np.cos(x)**2), 0)
+data_try_and_catch = try_and_catch_generator(fn, a, b, 1, N)
+_, binedges2 = ms.one_data_binning(data_try_and_catch)
+grafico_try_and_catch = ms.plot_histogram(data_try_and_catch, binedges2, label='histogram', color='blue', edgecolor='black', xlabel='data try and catch', ylabel='sos', overlay=fn)
+
+#Domanda 4
+#A partire dagli eventi generati si calcolino media, deviazione standard, simettetria e curtosi della distribuzione implementando le giuste funzioni
+media = np.mean(data)
+deviazione_standard = np.std(data)
+gamma1 = sc.skew(data)
+gamma2 = sc.kurtosis(data)
+print(f"Media: {media:.2f}")
+print(f"Deviazione standard: {deviazione_standard:.2f}")
+print(f"Simmetria (skewness): {gamma1:.2f}")
+print(f"Curtosi (kurtosis): {gamma2:.2f}")
+
+#Domanda 5
+#Mostrare che vale quantitativamente il teorema centrale del limite, a partire dalla generazione di eventi casuali con la pdf data
+from iminuit.cost import BinnedNLL
+def generatore_casual_pdf(pdf, n, xmin, xmax, N):
+	"""
+  	Questa funzione prende in ingresso: una pdf qualunque,
+	massimo e minimo del dominio delle x e quanto voglio grande questo dominio N
+	e infine quanti numeri n piccolo voglio generare"""
+
+	x = np.linspace(xmin, xmax, N)
+	pdf_values = pdf(x)
+	pdf_values /= np.trapz(pdf_values) #normalizzo la pdf con l'integrale
+
+	cdf = np.cumsum(pdf_values)
+	cdf /= cdf[-1]
+
+	random_numbers = np.random.uniform(0, 1, size=n)
+	samples = np.interp(random_numbers, cdf, x)  #interp mi trasforma i dati con la cdf
+	return samples, x, pdf_values
+
+def TCL_pdf(f, a, b, Neventi):
+  """
+  Argomenti: una pdf f, (a,b) intervallo di generazione
+  """
+  sample = []
+  n = 10
+  for i in range(Neventi):
+    media = np.mean(mr.generatore_casual_pdf(f, n, a, b, n))
+    sample.append(media)
+  return sample
+
+data_TCL = TCL_pdf(fn, a, b, N)
+media_TCL = np.mean(data_TCL)
+deviazione_standard_TCL = np.std(data_TCL)
+gamma1_TCL = sc.skew(data_TCL)
+gamma2_TCL = sc.kurtosis(data_TCL)
+print(f"Media: {media_TCL:.2f}")
+print(f"Deviazione standard: {deviazione_standard_TCL:.2f}")
+print(f"Simmetria (skewness): {gamma1_TCL:.2f}")
+print(f"Curtosi (kurtosis): {gamma2_TCL:.2f}")
+
+_, binedges3 = ms.one_data_binning(data_TCL)
+x_norm = np.linspace(min(data_TCL), max(data_TCL), 10000)
+plt.plot(x_norm, sc.norm.pdf(x_norm, loc=media_TCL, scale=deviazione_standard_TCL), color='blue', label='Normal Distribution')
+grafico3 = ms.plot_histogram(data_TCL, binedges3, label='histogram', color='red', edgecolor='black', xlabel='dati generati con il TCL', ylabel='sos')
+plt.show()
+
+#Verifica quantitativa, con la loglikelihood
+def model(x, media, sigma, N):
+  pdf = sc.norm(x, media, sigma)
+  return N*pdf
+
+def cdf_model(binedges, media, sigma):
+  return sc.norm.cdf(binedges, media, sigma)
+
+binnaggio, _ = np.histogram(data_TCL, binedges3)
+funzione_costo = BinnedNLL(binnaggio, binedges3, cdf_model)
+minimi_TCL = Minuit(funzione_costo,
+                    media = media_TCL,
+                    sigma = deviazione_standard_TCL)
+minimi_TCL.migrad()
+minimi_TCL.minos()
+print(minimi_TCL.valid)
+print ('associated p-value: ', 1. - chi2.cdf (minimi_TCL.fval, df = minimi_TCL.ndof))
+if 1. - chi2.cdf (minimi_TCL.fval, df = minimi_TCL.ndof) > 0.10:
+  print ('the event sample is compatible with a Gaussian distribution')
+  
+
+
+
+  
+TEMA D'ESAME 4
+#Domanda 1 e
+#Si generi un campione di N_exp = 2000 con pdf esponenziale e lambda = 1/200, compresi tra 0 e 3 volte tau,
+#ed uno di N_gauss = 200 distribuiti gaussianamente con media = 190 e sigma = 20
+#Si costruisca un campione pari all'unione di questi due e se ne disegni l'istogramma
+N_gauss = 200
+N_exp = 2000
+N = N_gauss + N_exp
+lam = 1/200
+mu = 190
+sigma = 20
+data_gauss = mr.TCL(mu, sigma, N_gauss)
+data_exp = mr.inversa_exponential(1/lam, N_exp)
+
+dataT = np.array([])
+dataT = np.append(data_gauss, data_exp)
+stdT = np.std(dataT)
+_, binedgesT = ms.one_data_binning(dataT)
+graficoT = ms.plot_histogram(dataT, binedgesT, label='Istogramma totale', color='green', edgecolor='black', xlabel='data', ylabel='frequency')
+
+#Domanda 3
+#Si effettui un fit del campione pe determinare i parametri del modello
+from scipy.stats import expon, norm
+from iminuit.cost import ExtendedBinnedNLL
+
+def modelloT(binedges, N_gauss, mu, sigma, N_exp, tau):
+  return (N_gauss * norm.cdf(binedges, mu, sigma)) + (N_exp * expon.cdf(binedges, 0, tau))
+
+binnaggio, _ = np.histogram(dataT, binedgesT)
+mediaT = np.mean(dataT)
+stdT = np.std(dataT)
+funzione_costoT = ExtendedBinnedNLL(binnaggio, binedgesT, modelloT)
+minimiT = Minuit(funzione_costoT,
+                    mu = mediaT,
+                    sigma = stdT,
+                    N_exp = N,
+                    N_gauss = N,
+                    tau = mediaT)
+minimiT.migrad()
+minimiT.hesse()
+print(minimiT.valid)
+display(minimiT)
+mu_fit = minimiT.values['mu']
+sigma_fit = minimiT.values['sigma']
+N_exp_fit = minimiT.values['N_exp']
+N_gauss_fit = minimiT.values['N_gauss']
+tau_fit = minimiT.values['tau']
+#Errori del fit
+mu_err = minimiT.errors['mu']
+sigma_err = minimiT.errors['sigma']
+N_exp_err = minimiT.errors['N_exp']
+N_gauss_err = minimiT.errors['N_gauss']
+tau_err = minimiT.errors['tau']
+print(f"mu : {mu_fit:.2f} ± {mu_err:.2f}")
+print(f"sigma : {sigma_fit:.2f} ± {sigma_err:.2f}")
+print(f"N_exp : {N_exp_fit:.2f} ± {N_exp_err:.2f}")
+print(f"N_gauss : {N_gauss_fit:.2f} ± {N_gauss_err:.2f}")
+print(f"tau : {tau_fit:.2f} ± {tau_err:.2f}")
+
+#Domanda 4
+#Si costruisca una funzione che calcoli il logaritmo della likelihood associata al campione, dato il seguente modello di densità di probabilità
+# f(x) = a*Exp(x, lambda) + b*Gauss(x, mu, sigma)
+
+def pdf(x, mean):
+    return (N_exp_fit * (1/tau_fit) * np.exp (-x * (1/tau_fit))) + (N_gauss_fit * (1. / (np.sqrt (2 * np.pi) * sigma_fit)) * np.exp (-0.5 * ((x - mean)/sigma_fit)**2))
+
+def loglikelihood(pdf, theta, sample):
+  """
+  Argomenti: la pdf, theta è un array con i parametri, sample:set di data
+  """
+  logL = 0
+  for x in sample:
+    for t in theta:
+      if (pdf(x, t)>0) :
+        logL = logL + np.log(pdf(x, theta))
+  return logL
+
+#Domanda 5
+#Fissati i parametri del fit, si calcoli il valore della loglikelihood, variando la media tra 30 e 300 con passo costante e
+#se ne disegni l'andamento
+median = np.linspace(30, 300, 1000)
+f = pdf(median, mu_fit)
+plt.plot(median, f)
+plt.xlabel('x')
+plt.ylabel('pdf')
+plt.show ()
+
+fig, ax = plt.subplots()
+LogL = loglikelihood(pdf, median, dataT)
+ax.plot (median, LogL, color = 'red')
+ax.plot (median, LogL, color = 'red')
+ax.set_xlabel('mean')  # Set x-axis label
+ax.set_ylabel('log-likelihood')  # Set y-axis label
+plt.show()
+
+#Domanda 6
+#si determini il massimo della funzione di verosomiglianza in funzione del parametro mu con il metodo della sezione aurea
+def loglikelihood(pdf, theta, sample):
+  """
+  Argomenti: la pdf, theta è un array con i parametri, sample:set di data
+  """
+  logL = 0
+  for x in sample:
+    if (pdf(x, theta)>0) :
+      logL = logL + np.log(pdf(x, theta))
+  return logL
+def logL(mu):
+  total_logL = 0
+  for x in dataT:
+    if pdf(x, mu) > 0:
+      total_logL += np.log(pdf(x, mu))
+  return total_logL
+massimo, fmassimo = mn.massimi_sezioneAurea(logL, 175, 225, tolleranza=1e-8)
+print(massimo, fmassimo)
+
+
+
+
+
+
+TEMA D'ESAME 5
+#L'algoritmo di Box-Muller permette, generando x1 e x2 uniformemente tra 0,1, di produrre due numeri g1 e g2 distribuiti normalmente
+#   g1 = np.sqrt(-2*np.log(x1))*np.cos(2*np.pi*x2)     g2 = np.sqrt(-2*np.log(x1))*np.sin(2*np.pi*x2)
+#Domanda 1
+#Scrivere una funzione chiamata  generate_gaus_bm che generi coppie di numeri pseudocasuali distribuiti gaussanamente
+def generate_gauss_bm(Neventi):
+  """
+  La funzione genera Neventi gaussiani
+  """
+  sample = []
+  g1_tot = []
+  g2_tot = []
+  for i in range(Neventi):
+    x1 = np.random.uniform(0, 1)
+    x2 = np.random.uniform(0, 1)
+    p = np.sqrt(-2*np.log(x1))
+    g1 = p*np.cos(2*np.pi*x2)
+    g2 = p*np.sin(2*np.pi*x2)
+    g1_tot.append(g1)
+    g2_tot.append(g2)
+  sample = np.concatenate([g1_tot, g2_tot])
+  return sample
+
+#Domanda 2
+#Si generino N = 1000 numeri pseudo casuali utilizzando la funzione appena scritta e li si disegni in un istogramma
+Neventi = 1000
+sample = generate_gauss_bm(Neventi)
+print("Primi 10 numeri generati:", sample[:10])
+_, binedges = ms.one_data_binning(sample)
+grafico = ms.plot_histogram(sample, binedges, label='Istogramma', color='green', edgecolor='black', xlabel='data', ylabel='frequency')
+
+#Domanda 3
+#Si determino la media e la varianza della distribuzione ottenuta e i relativi errori
+N = len(sample)
+media_sample = np.mean(sample)
+var_sample = np.var(sample)
+media_errore = np.std(sample) / (np.sqrt(N))
+varianza_errore = np.sqrt((2*(var_sample**2))/(N-1))
+def errore_varianza(array):
+  """
+  Dato un array, mi trova l'errore sulla varianza
+  """
+  var = np.var(array)
+  N = len(array)
+  var_err = np.sqrt(2*(var**2))/(N-1)
+  return var_err
+print ('media:', media_sample, '±', media_errore)
+print ('varianza:', var_sample, '±', varianza_errore)
+
+#Domanda 4
+#Si mostri graficamente che, al variare del numero N di eventi generati, la sigma della distribuzione
+#non cambia, mentre l’errore sulla media si riduce.
+valori = np.linspace(100, 2000, 100)
+media = []
+sigma = []
+err_media = []
+for Nev in valori:
+  sample_i = generate_gauss_bm(int(Nev))
+  N_i = len(sample_i)
+  media_i = np.mean(sample_i)
+  std_i = np.std(sample_i)
+  media_errore = np.std(sample_i) / (np.sqrt(Nev))
+  media.append(media_i)
+  sigma.append(std_i)
+  err_media.append(media_errore)
+
+fig, ax = plt.subplots (1, 1)
+ax.plot(valori, sigma, label = 'single measurement error', color='red')
+ax.plot(valori, err_media, label = 'errore sulla media', color='black')
+ax.set_title ('Errore sulla media', size=14)
+ax.set_xlabel ('Sigma')
+ax.set_ylabel ('Sos')
+ax.legend ()
+plt.show ()
+
+#Domanda 5
+#Si trasformi l’algoritmo in modo che generi numeri pseudo-casuali con densità di probabilità Gaussiana con media µ = 5 e varianza σ2 = 4.
+#Si generi un nuovo campione di N = 1000 eventi con il nuovo algoritmo e se ne disegni la
+#distribuzione, sempre scegliendo in modo opportuno gli estremi ed il binnaggio dell’istogramma corrispondente.
+mu = 5
+var = 4
+sigma = np.sqrt(var)
+Nt = 1000
+
+def generate_gauss_Box_Muller(Neventi, mu, sigma):
+  """
+  La funzione genera Neventi gaussiani con media mu e dev sigma
+  """
+  sample = []
+  g1_tot = []
+  g2_tot = []
+  transform = lambda x : x * sigma + mu
+  #Moltiplicare per sigma mi trasforma la larghezza da 1 a sigma e aggiungo mu per traslare
+  for i in range(N):
+    x1 = np.random.uniform(0, 1)
+    x2 = np.random.uniform(0, 1)
+    p = np.sqrt(-2*np.log(x1))
+    g1 = p*np.cos(2*np.pi*x2)
+    g2 = p*np.sin(2*np.pi*x2)
+    g1_tot.append(transform(g1))
+    g2_tot.append(transform(g2))
+  sample = np.concatenate([g1_tot, g2_tot])
+  return sample
+
+sample2 = generate_gauss_Box_Muller(Nt, mu, sigma)
+_, binedges2 = ms.one_data_binning(sample2)
+grafico = ms.plot_histogram(sample2, binedges2, label='Istogramma', color='green', edgecolor='black', xlabel='data', ylabel='frequency')
+
+
+
+
+
+
+TEMA D'ESAME 6
+#Domanda 1
+#Si scriva una funzione che simuli il cammino degli abitanti del villaggio dopo aver bevuto la grappa,
+#assumendo che si spostino in piano, che ogni passo abbia direzione casuale uniforme angolarmente
+#ed una lunghezza distribuita secondo una distribuzione Gaussiana con media 1 e larghezza 0.2, troncata a valori positivi.
+
+N_abitanti = 10000
+N_steps = 10
+
+def gauss_positiva(media, sigma, N):
+  n = np.random.normal(media, sigma, N)
+  return n[n > 0]
+
+def ubriachi(Neventi, Nsteps, start = [0., 0.]):
+  end = np.zeros((Neventi, 2))
+  for i in range(Neventi):
+    x, y = start
+    for j in range(Nsteps):
+      alpha_i = np.random.uniform(0, 2*np.pi)
+      r_i = gauss_positiva(1, 0.2, 1)
+      x += r_i[0] * np.cos(alpha_i)
+      y += r_i[0] * np.sin(alpha_i)
+    end[i, :] = [x, y]
+
+  distanze = np.linalg.norm(end - np.array(start), axis=1)  #questa funzione mi calcola la norma per ogni abitante
+
+  Nbins = len(distanze)
+  binnaggio, binedges = np.histogram(distanze, Nbins, range=(0, max(distanze)))
+  plt.hist(distanze, bins=binedges, color='blue', alpha=0.7, edgecolor='black')
+  plt.xlabel('Distanza dal punto di partenza')
+  plt.ylabel('Frequenza')
+  plt.title('Distribuzione delle distanze finali')
+  plt.show()
+  return end, distanze
+
+def walk (N_steps = 10, start = [0,0]):
+    # end = identificare end e start come associati alla stessa cella di memoria
+    end = [start[0], start[1]]
+    for i in range (N_steps):
+        angle = np.random.uniform(0, 2*np.pi)
+        step = gauss_positiva(1, 0.2, 1)[0]
+        end[0] += step * np.cos (angle)
+        end[1] += step * np.sin (angle)
+    return end
+
+
+#Domanda 2
+#Immaginando che il calderone si trovi alle coordinate (0, 0) sul piano, si scriva una funzione che
+#calcoli la posizione (x, y) raggiunta da Asterix dopo N = 10 passi e si disegni il suo percorso
+asterix = [0,0]
+path = np.zeros((N_abitanti + 1, 2))  #Ogni roga è una posizione [x, y], è un array multidimensionale
+path[0] = asterix
+
+for i_step in range(1, N_abitanti + 1):
+    path[i_step] = walk(1, path[i_step - 1])
+
+x_coords = path[:, 0]
+y_coords = path[:, 1]
+
+fig, ax = plt.subplots()
+ax.plot(x_coords, y_coords, 'bo-')
+ax.set_xlabel('x')
+ax.set_ylabel('y')
+plt.title('Percorso di un ubriaco')
+plt.show()
+
+#Domanda 3
+#Si consideri ora l’intera popolazione: si determini la posizione (x, y) di ogni abitante dopo N = 10 passi
+#a partire dal calderone e si disegni le distribuzione della distanza raggiunta dal punto di
+#partenza, assumendo la popolazione totale composta da 10000 persone.
+N_abitanti = 10000
+N_steps = 10
+posizioni = np.zeros((N_abitanti, 2))
+start_position = [0., 0.]
+for i in range(N_abitanti):
+  posizioni[i] = walk(N_steps, start=start_position)
+
+distanze = np.sqrt(posizioni[:, 0]**2 + posizioni[:, 1]**2)
+#binedges = ms.one_data_binning(distanze, N_abitanti)
+_, binedges = np.histogram(distanze, bins=ms.sturges(N_abitanti))
+plt.hist(distanze, binedges, color='blue', alpha=0.7, edgecolor='black')
+plt.xlabel('Distanza dal punto di partenza')
+plt.ylabel('Frequenza')
+plt.title('Distribuzione delle distanze finali della popolazione')
+plt.show()
+
+#Domanda 4
+#Calcolare media, varianza, simmetria, curtosi della distribuzione
+media = ms.media(distanze)
+varianza = ms.varianza(distanze)
+gamma1 = sc.skew(distanze)
+gamma2 = sc.kurtosis(distanze)
+media_errore = ms.erroreStandardMedia(distanze)
+varianza_errore = ms.errore_varianza(distanze)
+print ('media:', media, '±', media_errore)
+print ('varianza:', varianza, '±', varianza_errore)
+print('gamma1: ', gamma1, 'gamma2: ', gamma2)
+
+#Domanda 5
+#lunghezza dei passi uguale ad 1 costante     f(r) = ((2*r)/N)*np.exp((-r**2)/N)
+#Fare un fit con queste ipotesi
+
+def walk_rayleigh(N_steps = 10, start = [0,0]):
+    # end = start identificare end e start come associati alla stessa cella di memoria
+    end = [start[0], start[1]]
+    for i in range (N_steps):
+        angle = np.random.uniform(0, 2*np.pi)
+        step = 1
+        end[0] += step * np.cos (angle)
+        end[1] += step * np.sin (angle)
+    return end
+
+def Rayleigh(r, N_steps, norm):
+    return norm * 2 * r * np.exp(-r**2 / (N_steps)) / N_steps
+
+N_abitanti = 10000
+N_steps = 10
+start_position = [0., 0.]
+
+posizioni = np.zeros((N_abitanti, 2))
+for i in range(N_abitanti):
+    posizioni[i] = walk_rayleigh(N_steps, start=start_position)
+
+distanze = np.sqrt(posizioni[:, 0]**2 + posizioni[:, 1]**2)
+
+binnaggio, bin_edges = np.histogram(distanze, bins='sturges', density=False)
+bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])  # Centri dei bin
+bin_width = bin_edges[1] - bin_edges[0]
+
+# Calcolo della normalizzazione
+norm = N_abitanti * bin_width  # Normalizzazione rispetto al numero di abitanti e larghezza bin
+
+# Plotting
+fig, ax = plt.subplots()
+ax.hist(distanze, bins=bin_edges, color='green', alpha=0.7, edgecolor='black', label='Istogramma')
+x_coord = np.linspace(0, max(distanze), 1000)
+ax.plot(x_coord, Rayleigh(x_coord, N_steps, norm), color='red', label='Funzione di Rayleigh')
+plt.xlabel('Distanza dal punto di partenza')
+plt.ylabel('Frequenza')
+plt.title('Distribuzione delle distanze finali della popolazione')
+ax.legend()
+plt.show()
+
+#fit
+def model(bin_edges, N_steps):
+  return sc.rayleigh.cdf(bin_edges, 0, np.sqrt(N_steps/2))
+
+Nbin = ms.sturges(len(distanza))
+binnaggio, bin_edges = np.histogram(distanza, Nbin)
+funzione_costoT = BinnedNLL(binnaggio, bin_edges, model)
+minimiT = Minuit(funzione_costoT,
+                    N_steps = max(distanza))  #La stima migliore di N è la distanza massima (?)
+minimiT.migrad()
+minimiT.hesse()
+print(minimiT.valid)
+display(minimiT)
+
+#Errori del fit
+N_steps_fit = minimiT.values['N_steps']
+N_steps_err = minimiT.errors['N_steps']
+
+print(f"N_steps : {N_steps_fit:.2f} ± {N_steps_err:.2f}")
+
+
+
+
+
+
+TEMA D'ESAME TRISTE
+#Domanda 1
+#definire una gaussiana con una media sola ma con due sigma, quindi due code diverse, che sia continua e normalizzata 
+#Domanda 2
+#Fare il grafico
+
+def gauss(x):
+    media = 0
+    sigma_sx = 2
+    sigma_dx = 5
+    A = sigma_dx/sigma_sx  #fattore per la continuità
+    C = (2*sigma_sx)/(sigma_sx + sigma_dx)  #fattore per la normalizzazione
+    sx = C*sc.norm.pdf(x, media, sigma_sx)
+    dx = C*A*sc.norm.pdf(x, media, sigma_dx)
+    return np.where(x <= media, sx, dx)
+
+x = np.linspace(-10, 10, 1000)
+y = gauss(x)
+plt.plot(x, y, color='red')
+plt.grid(True)
+plt.legend()
+plt.show()
+
+#Domanda 3
+#Verifica con il metodo hit_or_miss che la pdf sia correttamente normalizzata, cioè l'area sottesa deve essere uguale a 0
+media = 0
+sigma_sx = 2
+sigma_dx = 5
+a = -20
+b = 20
+N = 20000
+M = gauss(media)
+m = 0
+area, std_area = mn.hit_or_miss_integrate(gauss, a, b, m, M, N)
+print('integrale: ', area, 'errore sull integrale: ', std_area)
+
+#Domanda 4
+#Generare N = 1000 eventi distribuiti secondo la pdf ottenuta con il metodo try and catch, farne l'istogramma e calcolare media e mediana
+N_gauss = 1000
+a = -10
+b = 10
+sample = mr.try_and_catch_generator(gauss, a, b, M, N_gauss)
+bin_content, binedges = np.histogram(sample, ms.sturges(len(sample)), range = (min(sample), max(sample)))
+fig, ax = plt.subplots (nrows = 1, ncols = 1)
+plt.hist(sample, bins=binedges, density=True, alpha=0.6, color='green', edgecolor='black', label='Istogramma normalizzato')
+plt.xlabel("Eventi secondo double_gauss")
+plt.ylabel("Densità di frequenza")
+plt.legend()
+plt.title("Teorema Centrale del Limite")
+plt.show()
+
+media_sample = np.mean(sample)
+mediana_sample = np.median(sample)
+print('media: ', media_sample, 'mediana: ', mediana_sample)
+
+def TAC(f, xmin, xmax, ymax, max_attempts=100000):
+    attempts = 0
+    while attempts < max_attempts:
+        x = np.random.uniform(xmin, xmax)
+        y = np.random.uniform(0, ymax)
+        if y <= f(x):
+            return x
+        attempts += 1
+    print('Maximum attempts reach')
+    return None
+
+def try_and_catch_generator_v2(f, a, b, M, N):
+    """
+    Argomenti: 
+    f: la pdf, funzione da campionare
+    a, b: insieme di generazione (limiti di campionamento)
+    M: valore tale che la pdf è minore di M (fattore di normalizzazione)
+    N: numero di eventi da generare
+
+    Return: sample di eventi generati tramite il metodo Try-and-Catch
+    """
+    sample = []
+    attempts = 0  
+    while len(sample) < N:  
+        x = np.random.uniform(a, b)  
+        u = np.random.uniform(0, 1)  
+        if u <= f(x)/M:  
+            sample.append(x)  
+        attempts += 1
+        if attempts >= 100000:  
+            print("Maximum attempts reached!")
+            break
+    return sample
+N_gauss = 1000
+a = -10
+b = 10
+sample = try_and_catch_generator_v2(gauss, a, b, M, N_gauss)
+bin_content, binedges = np.histogram(sample, ms.sturges(len(sample)), range = (min(sample), max(sample)))
+fig, ax = plt.subplots (nrows = 1, ncols = 1)
+plt.hist(sample, bins=binedges, density=True, alpha=0.6, color='green', edgecolor='black', label='Istogramma normalizzato')
+plt.xlabel("Eventi secondo double_gauss")
+plt.ylabel("Densità di frequenza")
+plt.legend()
+plt.title("Teorema Centrale del Limite")
+plt.show()
+
+media_sample = np.mean(sample)
+mediana_sample = np.median(sample)
+print('media: ', media_sample, 'mediana: ', mediana_sample)
+
+def TAC(f, xmin, xmax, ymax, max_attempts=100000):
+    attempts = 0
+    while attempts < max_attempts:
+        x = np.random.uniform(xmin, xmax)
+        y = np.random.uniform(0, ymax)
+        if y <= f(x):
+            return x
+        attempts += 1
+    print('Maximum attempts reach')
+    return None
+
+#Domanda 5
+#Con i toy trovare la formula che lega la differenza tra media e mediana con il rapporto tra sigma_dx e sigma_sx
+Ntoy = 100
+delta = []
+err = []
+sigma_dx = 3
+sigma_sx = 2
+sigmad = []
+media = 0
+M = gauss(media)
+
+def try_and_catch_generator_v2(f, a, b, M, N):
+    """
+    Argomenti: 
+    f: la pdf, funzione da campionare
+    a, b: insieme di generazione (limiti di campionamento)
+    M: valore tale che la pdf è minore di M (fattore di normalizzazione)
+    N: numero di eventi da generare
+
+    Return: sample di eventi generati tramite il metodo Try-and-Catch
+    """
+    sample = []
+    attempts = 0  # Contatore per tentativi
+    while len(sample) < N:  # Fino a che non raggiungi N eventi
+        x = np.random.uniform(a, b)  # Genera un singolo valore x
+        u = np.random.uniform(0, 1)  # Un numero casuale tra 0 e 1
+        if u <= f(x)/M:  # Se il punto è sotto la curva
+            sample.append(x)  # Aggiungi il punto alla lista dei campioni
+        attempts += 1
+        if attempts >= 100000:  # Massimo numero di tentativi
+            print("Maximum attempts reached!")
+            break
+    return sample
+
+def gauss2(x, media, sigma_sx, sigma_dx):
+    A = sigma_dx/sigma_sx  #fattore per la continuità
+    C = (2*sigma_sx)/(sigma_sx + sigma_dx)  #fattore per la normalizzazione
+    sx = C*sc.norm.pdf(x, media, sigma_sx)
+    dx = C*A*sc.norm.pdf(x, media, sigma_dx)
+    return np.where(x <= media, sx, dx)
+
+for i in range(Ntoy):
+    N_eventi = 100
+    sample = try_and_catch_generator_v2((lambda x: gauss2(x, media, sigma_sx, sigma_dx)), -sigma_sx*10, sigma_dx*10, M, N_eventi)
+    sample = np.array(sample)
+    sigmad.append(sigma_dx)
+    d = np.mean(sample) - np.median(sample)
+    e = (np.std(sample)/np.sqrt(N_eventi))
+    delta.append(d)
+    err.append(e)
+    sigma_dx += 0.5
+
+sigmad = np.array(sigmad)
+fig,ax = plt.subplots(1,1)
+ax.errorbar(sigmad/sigma_sx, delta, yerr = err, capsize = 4)
+ax.set_xlabel('sigmad/sigmas')
+ax.set_ylabel('delta')
+plt.show()
+
+#Fit
+def model(x, m, q):
+    return m*x + q
+
+minimi = LeastSquares(sigmad/sigma_sx, delta, err, model)
+m = Minuit(minimi, m = 0, q = 0)
+m.migrad()
+m.hesse()
+N_dof = m.ndof
+Q2 = m.fval
+print(m.valid)
+display(m)
+plt.errorbar(sigmad/sigma_sx, delta, err, fmt="ok", label="data")
+plt.plot(sigmad/sigma_sx, model(sigmad/sigma_sx, *m.values), label="fit")
+
+fit_info = [
+    f"$\\chi^2$/$n_\\mathrm{{dof}}$ = {m.fval:.1f} / {m.ndof:.0f} = {m.fmin.reduced_chi2:.1f}",
+]
+for p, v, e in zip(m.parameters, m.values, m.errors):
+	fit_info.append(f"{p} = ${v:.3f} \\pm {e:.3f}$")
+
+plt.legend(title="\n".join(fit_info), frameon=False)
+plt.xlabel("x")
+plt.ylabel("y")
+plt.show()
+
+
+
+
