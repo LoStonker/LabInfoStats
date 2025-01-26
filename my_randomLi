@@ -194,4 +194,13 @@ def generate_gauss_bm(Neventi):
     g2_tot.append(g2)
   sample = np.concatenate([g1_tot, g2_tot])
   return sample
- 
+
+
+
+def uniform(media, sigma, N):
+"Prende una media e una sigma, insieme al numero di elementi"
+    l = sigma*(np.sqrt(12))         
+    a = media - l/2           
+    b = media + l/2
+    x = np.random.uniform(a, b, N)
+    return x
