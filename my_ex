@@ -904,18 +904,18 @@ TEMA D'ESAME TRISTE
 #Domanda 2
 #Fare il grafico
 
-def gauss(x):
-    media = 0
-    sigma_sx = 2
-    sigma_dx = 5
+def gauss(x, media, sigma_sx, sigma_dx):
     A = sigma_dx/sigma_sx  #fattore per la continuità
     C = (2*sigma_sx)/(sigma_sx + sigma_dx)  #fattore per la normalizzazione
     sx = C*sc.norm.pdf(x, media, sigma_sx)
     dx = C*A*sc.norm.pdf(x, media, sigma_dx)
     return np.where(x <= media, sx, dx)
 
+media = 0
+sigma_sx = 2
+sigma_dx = 5
 x = np.linspace(-10, 10, 1000)
-y = gauss(x)
+y = gauss(x, media, sigma_sx, sigma_dx)
 plt.plot(x, y, color='red')
 plt.grid(True)
 plt.legend()
@@ -923,47 +923,17 @@ plt.show()
 
 #Domanda 3
 #Verifica con il metodo hit_or_miss che la pdf sia correttamente normalizzata, cioè l'area sottesa deve essere uguale a 0
-media = 0
-sigma_sx = 2
-sigma_dx = 5
-a = -20
-b = 20
+a = -10
+b = 10
 N = 20000
-M = gauss(media)
+gauss_lambda = lambda x: gauss(x, media, sigma_sx, sigma_dx)
+M = gauss_lambda(media)
 m = 0
-area, std_area = mn.hit_or_miss_integrate(gauss, a, b, m, M, N)
+area, std_area = mn.hit_or_miss_integrate(gauss_lambda, a, b, m, M, N)
 print('integrale: ', area, 'errore sull integrale: ', std_area)
 
 #Domanda 4
 #Generare N = 1000 eventi distribuiti secondo la pdf ottenuta con il metodo try and catch, farne l'istogramma e calcolare media e mediana
-N_gauss = 1000
-a = -10
-b = 10
-sample = mr.try_and_catch_generator(gauss, a, b, M, N_gauss)
-bin_content, binedges = np.histogram(sample, ms.sturges(len(sample)), range = (min(sample), max(sample)))
-fig, ax = plt.subplots (nrows = 1, ncols = 1)
-plt.hist(sample, bins=binedges, density=True, alpha=0.6, color='green', edgecolor='black', label='Istogramma normalizzato')
-plt.xlabel("Eventi secondo double_gauss")
-plt.ylabel("Densità di frequenza")
-plt.legend()
-plt.title("Teorema Centrale del Limite")
-plt.show()
-
-media_sample = np.mean(sample)
-mediana_sample = np.median(sample)
-print('media: ', media_sample, 'mediana: ', mediana_sample)
-
-def TAC(f, xmin, xmax, ymax, max_attempts=100000):
-    attempts = 0
-    while attempts < max_attempts:
-        x = np.random.uniform(xmin, xmax)
-        y = np.random.uniform(0, ymax)
-        if y <= f(x):
-            return x
-        attempts += 1
-    print('Maximum attempts reach')
-    return None
-
 def try_and_catch_generator_v2(f, a, b, M, N):
     """
     Argomenti: 
@@ -986,107 +956,73 @@ def try_and_catch_generator_v2(f, a, b, M, N):
             print("Maximum attempts reached!")
             break
     return sample
+
 N_gauss = 1000
-a = -10
-b = 10
-sample = try_and_catch_generator_v2(gauss, a, b, M, N_gauss)
+sample = try_and_catch_generator_v2(gauss_lambda, a, b, M, N_gauss)
 bin_content, binedges = np.histogram(sample, ms.sturges(len(sample)), range = (min(sample), max(sample)))
+media_sample = np.mean(sample)
+mediana_sample = np.median(sample)
+print('media: ', media_sample, 'mediana: ', mediana_sample)
 fig, ax = plt.subplots (nrows = 1, ncols = 1)
 plt.hist(sample, bins=binedges, density=True, alpha=0.6, color='green', edgecolor='black', label='Istogramma normalizzato')
 plt.xlabel("Eventi secondo double_gauss")
 plt.ylabel("Densità di frequenza")
 plt.legend()
 plt.title("Teorema Centrale del Limite")
+ax.axvline (x=mediana_sample, color='red', linestyle='--', label='median')
+ax.axvline (x=media_sample, color='blue', linestyle='--', label='mean')
 plt.show()
-
-media_sample = np.mean(sample)
-mediana_sample = np.median(sample)
-print('media: ', media_sample, 'mediana: ', mediana_sample)
-
-def TAC(f, xmin, xmax, ymax, max_attempts=100000):
-    attempts = 0
-    while attempts < max_attempts:
-        x = np.random.uniform(xmin, xmax)
-        y = np.random.uniform(0, ymax)
-        if y <= f(x):
-            return x
-        attempts += 1
-    print('Maximum attempts reach')
-    return None
 
 #Domanda 5
 #Con i toy trovare la formula che lega la differenza tra media e mediana con il rapporto tra sigma_dx e sigma_sx
-Ntoy = 100
+sigma_sx = 1
+means = []
+mean_errors = []
+medians = []
+ratios = []
 delta = []
-err = []
-sigma_dx = 3
-sigma_sx = 2
-sigmad = []
-media = 0
-M = gauss(media)
 
-def try_and_catch_generator_v2(f, a, b, M, N):
-    """
-    Argomenti: 
-    f: la pdf, funzione da campionare
-    a, b: insieme di generazione (limiti di campionamento)
-    M: valore tale che la pdf è minore di M (fattore di normalizzazione)
-    N: numero di eventi da generare
-
-    Return: sample di eventi generati tramite il metodo Try-and-Catch
-    """
-    sample = []
-    attempts = 0  # Contatore per tentativi
-    while len(sample) < N:  # Fino a che non raggiungi N eventi
-        x = np.random.uniform(a, b)  # Genera un singolo valore x
-        u = np.random.uniform(0, 1)  # Un numero casuale tra 0 e 1
-        if u <= f(x)/M:  # Se il punto è sotto la curva
-            sample.append(x)  # Aggiungi il punto alla lista dei campioni
-        attempts += 1
-        if attempts >= 100000:  # Massimo numero di tentativi
-            print("Maximum attempts reached!")
-            break
-    return sample
-
-def gauss2(x, media, sigma_sx, sigma_dx):
-    A = sigma_dx/sigma_sx  #fattore per la continuità
-    C = (2*sigma_sx)/(sigma_sx + sigma_dx)  #fattore per la normalizzazione
-    sx = C*sc.norm.pdf(x, media, sigma_sx)
-    dx = C*A*sc.norm.pdf(x, media, sigma_dx)
-    return np.where(x <= media, sx, dx)
-
-for i in range(Ntoy):
-    N_eventi = 100
-    sample = try_and_catch_generator_v2((lambda x: gauss2(x, media, sigma_sx, sigma_dx)), -sigma_sx*10, sigma_dx*10, M, N_eventi)
-    sample = np.array(sample)
-    sigmad.append(sigma_dx)
-    d = np.mean(sample) - np.median(sample)
-    e = (np.std(sample)/np.sqrt(N_eventi))
+for sigma_dx in np.arange (1., 100., 1):
+    Ne = 10000
+    sample = try_and_catch_generator_v2(gauss_lambda, media - 4 * sigma_sx, media + 4 * sigma_dx, gauss_lambda(media), Ne)
+    medie = np.mean(sample)
+    mediane = np.median(sample)
+    d = medie - mediane
+    
+    means.append (medie)
+    medians.append (mediane)
+    mean_errors.append (np.std(sample)/np.sqrt(Ne))
     delta.append(d)
-    err.append(e)
-    sigma_dx += 0.5
+    ratios.append (sigma_dx/sigma_sx)
 
-sigmad = np.array(sigmad)
-fig,ax = plt.subplots(1,1)
-ax.errorbar(sigmad/sigma_sx, delta, yerr = err, capsize = 4)
-ax.set_xlabel('sigmad/sigmas')
-ax.set_ylabel('delta')
-plt.show()
+fig, ax = plt.subplots (nrows = 1, ncols = 1)
+#delta = [a - b for a, b in zip(means, medians)]
+ax.scatter (delta, ratios, marker = 'o')
+ax.set_xlabel ('mean-median')
+ax.set_ylabel ('ratio')
+plt.show ()
 
 #Fit
 def model(x, m, q):
     return m*x + q
 
-minimi = LeastSquares(sigmad/sigma_sx, delta, err, model)
+minimi = LeastSquares(ratios, delta, err, model)
 m = Minuit(minimi, m = 0, q = 0)
 m.migrad()
 m.hesse()
 N_dof = m.ndof
 Q2 = m.fval
-print(m.valid)
+print('successo del fit: ', m.valid)
 display(m)
-plt.errorbar(sigmad/sigma_sx, delta, err, fmt="ok", label="data")
-plt.plot(sigmad/sigma_sx, model(sigmad/sigma_sx, *m.values), label="fit")
+
+print ('p-value associato al fit:', 1. - chi2.cdf (m.fval, df = m.ndof))
+print ("La relazione empirica fra il rapporto delle sigma e la differenza fra media e mediana e' lineare:")
+print ("rapporto = ", 1. / m.values[0], "* (media - mediana)")
+
+m_fit = m.values['m']
+q_fit = m.values['q']
+plt.errorbar(ratios, delta, err, fmt="ok", label="data")
+plt.plot(ratios, model(np.array(ratios), m_fit, q_fit), label="fit", color="red", linewidth=4)
 
 fit_info = [
     f"$\\chi^2$/$n_\\mathrm{{dof}}$ = {m.fval:.1f} / {m.ndof:.0f} = {m.fmin.reduced_chi2:.1f}",
