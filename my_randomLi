@@ -198,7 +198,7 @@ def generate_gauss_bm(Neventi):
 
 
 def uniform(media, sigma, N):
-    """Prende una media e una sigma, insieme al numero di elementi"""
+    
     l = sigma*(np.sqrt(12))         
     a = media - l/2           
     b = media + l/2
