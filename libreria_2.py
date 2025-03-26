@@ -394,6 +394,112 @@ class FitChi2:
         plt.show()
 
 
+
+class FitChi2_0:
+    def __init__(self, model_func, data_arrays, initial_params, xlabel="x", ylabel="y", title="Risultati del fit"):
+        """
+        model_func: funzione Python che prende x e i parametri
+        data_arrays: dizionario con 'x', 'y', 'sigma_y'
+        initial_params: dizionario con parametri e valori iniziali
+        """
+        self.model = model_func
+        self.x = data_arrays['x']
+        self.y = data_arrays['y']
+        self.sigma = data_arrays.get('sigma_y', np.ones_like(self.y))
+        
+        # Estrae i nomi dei parametri dalla firma della funzione
+        sig = inspect.signature(model_func)
+        self.param_names = list(sig.parameters.keys())[1:]  # Esclude il primo parametro (x)
+        
+        self.initial_params = initial_params
+        self.fit_result = None
+                
+        self.xlabel = xlabel
+        self.ylabel = ylabel
+        self.title = title
+
+        #print("Parametri rilevati nella funzione:", self.param_names)
+        #print("Parametri forniti:", initial_params.keys()) 
+
+        self._validate_inputs()
+        
+    def _validate_inputs(self):
+        if len(self.x) != len(self.y) or len(self.y) != len(self.sigma):
+            raise ValueError("Tutti gli array devono avere la stessa lunghezza")
+            
+        if not all(p in self.param_names for p in self.initial_params.keys()):
+            raise ValueError("Nomi parametri non corrispondenti alla funzione")
+        
+        missing = set(self.param_names) - set(self.initial_params.keys())
+        if missing:
+          raise ValueError(f"Parametri mancanti: {missing}")
+    
+    def chi2_function(self, *args):
+        params = {name: val for name, val in zip(self.param_names, args)}
+        y_model = self.model(self.x, **params)
+        return np.sum(((self.y - y_model) / self.sigma)**2)
+
+    def perform_fit(self):       
+        self.m = Minuit(self.chi2_function, *self.initial_params.values())
+        self.m.errordef = 1.0
+        self.m.migrad()
+        
+        # Memorizza i risultati
+        self.fit_result = {name: (self.m.values[i], self.m.errors[i]) 
+                          for i, name in enumerate(self.param_names)}
+        
+        return self.m
+    
+    def print_results(self):
+        print(self.m.valid)
+        print("\nRisultati del fit:")
+        for name in self.param_names:
+            val, err = self.fit_result[name]
+            print(f"{name} = {val:.3e} ± {err:.3e}")
+        
+        chi2_val = self.m.fval
+        dof = len(self.x) - len(self.param_names)
+        print(f"\nChi-quadro ridotto: {chi2_val/dof:.3f}")
+        print(f"gradi di libertà: {dof:.3f}")
+        print(f"p-value: {1 - chi2.cdf(chi2_val, dof):.3f}")
+        
+    def plot_results(self, title_fontsize=14, label_fontsize=12):
+        plt.figure(figsize=(10, 6))
+    
+        plt.errorbar(self.x, self.y, yerr=self.sigma, fmt='o', label='Dati', markersize=7, capsize=4)
+        params_dict = {name: value for name, value in zip(self.param_names, self.m.values)}  
+        x_fit = np.linspace(self.x.min(), self.x.max(), 1000)
+        y_fit = self.model(x_fit, **params_dict)
+    
+        plt.plot(x_fit, y_fit, '-r', label='Fit', linewidth=2.5)
+        plt.xlabel("x", fontsize=12)
+        plt.ylabel("y", fontsize=12)
+        plt.xlabel(self.xlabel, fontsize=label_fontsize)
+        plt.ylabel(self.ylabel, fontsize=label_fontsize)
+        plt.title(self.title, fontsize=title_fontsize, pad=20)
+    
+        # Box informazioni
+        text = "\n".join([f"${n} = {v:.2e} \\pm {e:.2e}$" 
+                    for n, (v, e) in self.fit_result.items()])
+        text += f"\n$\\chi^2/NdoF = {self.m.fval/(len(self.x)-len(self.param_names)):.3f}$"
+        plt.annotate(text, 
+                     xy=(0.55, 0.95), 
+                     xycoords='axes fraction',
+                     va='top', 
+                     ha='left', 
+                     bbox=dict(
+                              facecolor='white',
+                              alpha=0.9,
+                              boxstyle='round,pad=0.7',  
+                              edgecolor='gray'
+                              ),
+                     fontsize=13,  
+                     linespacing=1.5)  
+        plt.legend(fontsize=11)
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()  
+        plt.show()
+
 """
 Formule per trovare zeri, massimi e minimi e integrali per via numerica"""
 
