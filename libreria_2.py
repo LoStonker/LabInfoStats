@@ -11,6 +11,7 @@ from scipy.integrate import quad
 from scipy.stats import norm, chi2, t
 import sys
 import inspect
+from scipy.optimize import curve_fit
 from scipy.odr import Model, RealData, ODR
 
 """
@@ -500,9 +501,197 @@ class FitChi2_0:
         plt.tight_layout()  
         plt.show()
 
+
+
+class FitScipy:
+    def __init__(self, model_func, data_arrays, initial_params, xlabel="x", ylabel="y", title="Risultati del fit"):
+        """
+        model_func: funzione Python che prende x e i parametri come argomenti posizionali
+        data_arrays: dizionario con 'x', 'y', 'sigma_y'
+        initial_params: dizionario con parametri e valori iniziali
+        """
+        self.model = model_func
+        self.x = data_arrays['x']
+        self.y = data_arrays['y']
+        self.sigma = data_arrays.get('sigma_y', np.ones_like(self.y))
+        
+        # Estrae i nomi dei parametri dalla firma della funzione
+        sig = inspect.signature(model_func)
+        self.param_names = list(sig.parameters.keys())[1:]  # Esclude il primo parametro (x)
+        
+        # Mappatura parametri -> ordine per curve_fit
+        self.initial_params_list = [initial_params[name] for name in self.param_names]
+        
+        self.fit_result = None
+        self.cov_matrix = None
+        self.xlabel = xlabel
+        self.ylabel = ylabel
+        self.title = title
+
+    def perform_fit(self):
+        """Esegue il fit usando curve_fit"""
+        popt, pcov = curve_fit(
+            self.model,
+            self.x,
+            self.y,
+            p0=self.initial_params_list,
+            sigma=self.sigma,
+            absolute_sigma=True
+        )
+        
+        self.fit_result = {name: (val, np.sqrt(pcov[i,i])) 
+                          for i, (name, val) in enumerate(zip(self.param_names, popt))}
+        self.cov_matrix = pcov
+        
+        # Calcola chi2 ridotto
+        residuals = self.y - self.model(self.x, *popt)
+        self.chi2_val = np.sum((residuals / self.sigma)**2)
+        self.dof = len(self.x) - len(popt)
+        
+    def print_results(self):
+        """Stampa i risultati del fit in formato leggibile"""
+        print("\nRisultati del fit:")
+        for name in self.param_names:
+            val, err = self.fit_result[name]
+            print(f"{name} = {val:.3e} ± {err:.3e}")
+        
+        print(f"\nChi-quadro ridotto: {self.chi2_val/self.dof:.3f}")
+        print(f"Gradi di libertà: {self.dof}")
+        print(f"p-value: {1 - chi2.cdf(self.chi2_val, self.dof):.3f}")
+
+    def plot_results(self, title_fontsize=14, label_fontsize=12):
+        """Genera il plot dei risultati"""
+        plt.figure(figsize=(10, 6))
+        plt.errorbar(self.x, self.y, yerr=self.sigma, fmt='o', label='Dati', markersize=7, capsize=4)
+        
+        # Genera curva di fit
+        x_fit = np.linspace(self.x.min(), self.x.max(), 1000)
+        params = [self.fit_result[name][0] for name in self.param_names]
+        y_fit = self.model(x_fit, *params)
+        
+        plt.plot(x_fit, y_fit, '-r', label='Fit', linewidth=2.5)
+        plt.xlabel(self.xlabel, fontsize=label_fontsize)
+        plt.ylabel(self.ylabel, fontsize=label_fontsize)
+        plt.title(self.title, fontsize=title_fontsize, pad=20)
+        
+        # Box informazioni
+        text = "\n".join([f"${n} = {v:.2e} \\pm {e:.2e}$" 
+                    for n, (v, e) in self.fit_result.items()])
+        text += f"\n$\\chi^2/N_{{doF}} = {self.chi2_val/self.dof:.3f}$"
+        
+        plt.annotate(text, 
+                     xy=(0.05, 0.95), 
+                     xycoords='axes fraction',
+                     va='top', 
+                     ha='left', 
+                     bbox=dict(facecolor='white', alpha=0.9, boxstyle='round,pad=0.7'),
+                     fontsize=13)
+        
+        plt.legend(fontsize=11)
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        plt.show()
+
+
+
+
+class FitScipy2_0:
+    def __init__(self, model_func, data_arrays, initial_params, xlabel="x", ylabel="y", title="Risultati del fit"):
+        """
+        model_func: funzione Python che prende x e i parametri come argomenti posizionali
+        data_arrays: dizionario con 'x', 'y', 'sigma_y'
+        initial_params: dizionario con parametri e valori iniziali
+        """
+        self.model = model_func
+        self.x = data_arrays['x']
+        self.y = data_arrays['y']
+        self.sigma = data_arrays.get('sigma_y', np.ones_like(self.y))
+        
+        # Estrae i nomi dei parametri dalla firma della funzione
+        sig = inspect.signature(model_func)
+        self.param_names = list(sig.parameters.keys())[1:]  # Esclude il primo parametro (x)
+        
+        # Mappatura parametri -> ordine per curve_fit
+        self.initial_params_list = [initial_params[name] for name in self.param_names]
+        
+        self.fit_result = None
+        self.cov_matrix = None
+        self.xlabel = xlabel
+        self.ylabel = ylabel
+        self.title = title
+
+    def perform_fit(self):
+        """Esegue il fit usando curve_fit"""
+        popt, pcov = curve_fit(
+            self.model,
+            self.x,
+            self.y,
+            p0=self.initial_params_list,
+            sigma=self.sigma,
+            absolute_sigma=True
+        )
+        
+        self.fit_result = {name: (val, np.sqrt(pcov[i,i])) 
+                          for i, (name, val) in enumerate(zip(self.param_names, popt))}
+        self.cov_matrix = pcov
+        
+        # Calcola chi2 ridotto
+        residuals = self.y - self.model(self.x, *popt)
+        self.chi2_val = np.sum((residuals / self.sigma)**2)
+        self.dof = len(self.x) - len(popt)
+        
+    def print_results(self):
+        """Stampa i risultati del fit in formato leggibile"""
+        print("\nRisultati del fit:")
+        for name in self.param_names:
+            val, err = self.fit_result[name]
+            print(f"{name} = {val:.3e} ± {err:.3e}")
+        
+        print(f"\nChi-quadro ridotto: {self.chi2_val/self.dof:.3f}")
+        print(f"Gradi di libertà: {self.dof}")
+        print(f"p-value: {1 - chi2.cdf(self.chi2_val, self.dof):.3f}")
+
+    def plot_results(self, title_fontsize=14, label_fontsize=12):
+        """Genera il plot dei risultati"""
+        plt.figure(figsize=(10, 6))
+        plt.errorbar(self.x, self.y, yerr=self.sigma, fmt='o', label='Dati', markersize=7, capsize=4)
+        
+        # Genera curva di fit
+        x_fit = np.linspace(self.x.min(), self.x.max(), 1000)
+        params = [self.fit_result[name][0] for name in self.param_names]
+        y_fit = self.model(x_fit, *params)
+        
+        plt.plot(x_fit, y_fit, '-r', label='Fit', linewidth=2.5)
+        plt.xlabel(self.xlabel, fontsize=label_fontsize)
+        plt.ylabel(self.ylabel, fontsize=label_fontsize)
+        plt.title(self.title, fontsize=title_fontsize, pad=20)
+        
+        # Box informazioni
+        text = "\n".join([f"${n} = {v:.2e} \\pm {e:.2e}$" 
+                    for n, (v, e) in self.fit_result.items()])
+        text += f"\n$\\chi^2/N_{{doF}} = {self.chi2_val/self.dof:.3f}$"
+        
+        plt.annotate(text, 
+                     xy=(0.55, 0.95), 
+                     xycoords='axes fraction',
+                     va='top', 
+                     ha='left', 
+                     bbox=dict(facecolor='white', alpha=0.9, boxstyle='round,pad=0.7'),
+                     fontsize=13)
+        
+        plt.legend(fontsize=11)
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        plt.show()
+
+
+
+
+
+
+
 """
 Formule per trovare zeri, massimi e minimi e integrali per via numerica"""
-
 
 def bisezione_iterativa(f, a, b, tolleranza=1e-6, max_iter=100):
     """
