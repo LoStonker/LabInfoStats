@@ -155,6 +155,122 @@ class FitODR:
         plt.show()
 
 
+class FitODR_2:
+    def __init__(self, model_func, data_arrays, initial_params, xlabel="x", ylabel="y", title="Risultati del fit"):
+        """
+        model_func: funzione Python che prende x e i parametri come keyword (es. def model(x, a, b): …)
+        data_arrays: dizionario con 'x', 'y', 'sigma_y' e opzionalmente 'sigma_x'
+        initial_params: dizionario con parametri e valori iniziali
+        """
+        self.model = model_func
+        self.x = data_arrays['x']
+        self.y = data_arrays['y']
+        self.sigma_y = data_arrays.get('sigma_y', np.ones_like(self.y))
+        self.sigma_x = data_arrays.get('sigma_x', np.zeros_like(self.x))  # se non fornito, si assume zero
+        
+        # Estrae i nomi dei parametri dalla firma della funzione (esclude x)
+        sig = inspect.signature(model_func)
+        all_param_names = list(sig.parameters.keys())
+        self.param_names = all_param_names[1:]
+        
+        self.initial_params = initial_params
+        self.fit_result = None
+        
+        self.xlabel = xlabel
+        self.ylabel = ylabel
+        self.title = title
+
+        self._validate_inputs()
+        
+    def _validate_inputs(self):
+        if len(self.x) != len(self.y) or len(self.y) != len(self.sigma_y):
+            raise ValueError("Gli array x, y e sigma_y devono avere la stessa lunghezza")
+        if len(self.x) != len(self.sigma_x):
+            raise ValueError("Gli array x e sigma_x devono avere la stessa lunghezza")
+        if not all(p in self.param_names for p in self.initial_params.keys()):
+            raise ValueError("I nomi dei parametri iniziali non corrispondono a quelli della funzione modello")
+    
+    def _odr_model(self, B, x):
+        """
+        Funzione wrapper per ODR.
+        B: array dei parametri, nell'ordine definito da self.param_names
+        x: array (o array 2D) delle variabili indipendenti
+        """
+        # Mappa l'array B in un dizionario con i nomi dei parametri
+        params_dict = {name: value for name, value in zip(self.param_names, B)}
+        return self.model(x, **params_dict)
+    
+    def perform_fit(self):
+        beta0 = [self.initial_params[name] for name in self.param_names]
+        
+        odr_model = Model(self._odr_model)
+        
+        data = RealData(self.x, self.y, sx=self.sigma_x, sy=self.sigma_y)
+        
+        odr = ODR(data, odr_model, beta0=beta0)
+        output = odr.run()
+        
+        self.fit_result = {name: (val, err) for name, val, err in zip(self.param_names, output.beta, output.sd_beta)}
+        self.odr_output = output 
+        
+        return output
+    
+    def print_results(self):
+        if self.fit_result is None:
+            raise RuntimeError("Devi eseguire prima il fit con perform_fit()")
+            
+        print("Risultati del fit (ODR):")
+        for name in self.param_names:
+            val, err = self.fit_result[name]
+            print(f"{name} = {val:.3e} ± {err:.3e}")
+        
+        chi2_val = self.odr_output.sum_square
+        dof = len(self.x) - len(self.param_names)
+        print(f"\nChi-quadro ridotto: {chi2_val/dof:.3f}")
+        print(f"Gradi di libertà: {dof}")
+        print(f"p-value: {1 - chi2.cdf(chi2_val, dof):.3f}")
+        
+    def plot_results(self, title_fontsize=14, label_fontsize=12):
+        if self.fit_result is None:
+            raise RuntimeError("Devi eseguire prima il fit con perform_fit()")
+        
+        plt.figure(figsize=(10, 6))
+
+        plt.errorbar(self.x, self.y, xerr=self.sigma_x, yerr=self.sigma_y,
+                     fmt='o', label='Dati', markersize=7, capsize=4)
+        
+
+        x_fit = np.linspace(np.min(self.x), np.max(self.x), 500)
+
+        params_dict = {name: self.fit_result[name][0] for name in self.param_names}
+        y_fit = self.model(x_fit, **params_dict)
+        plt.plot(x_fit, y_fit, '-r', label='Fit (ODR)', linewidth=2.5)
+        
+        plt.xlabel(self.xlabel, fontsize=label_fontsize)
+        plt.ylabel(self.ylabel, fontsize=label_fontsize)
+        plt.title(self.title, fontsize=title_fontsize, pad=20)
+        
+        # Box con informazioni sui risultati
+        text_lines = [f"${name} = {val:.2e} \\pm {err:.2e}$" 
+                      for name, (val, err) in self.fit_result.items()]
+        dof = len(self.x) - len(self.param_names)
+        chi2_red = self.odr_output.sum_square / dof
+        text_lines.append(f"$\\chi^2/NdoF = {chi2_red:.3f}$")
+        text = "\n".join(text_lines)
+        plt.annotate(text, 
+                     xy=(0.55, 0.95), 
+                     xycoords='axes fraction',
+                     va='top', 
+                     ha='left', 
+                     bbox=dict(facecolor='white', alpha=0.9, boxstyle='round,pad=0.7', edgecolor='gray'),
+                     fontsize=13, 
+                     linespacing=1.5)
+        plt.legend(fontsize=11)
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        plt.show()
+
+
 """
 Funzione per fittare e plottare utilizzando i minimi quadrati
 ESEMPIO:
