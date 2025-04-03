@@ -40,6 +40,19 @@ def t_test2(x1, x2, err1, err2) :
 	return p_value
 
 
+"""Funzione per fare lo Z-test"""
+def Ztest(x, y, sigma_x, x_name='x', y_name='y'):
+    Z = np.abs((x - y) / sigma_x)
+
+    p_value = 2 * (1 - sc.norm.cdf(Z))
+    
+    print(f"Il p-value del test di compatibilità tra il valore di {x_name} e {y_name} vale: {p_value:.4f}")
+    if p_value > 0.05:
+        print("I due valori sono compatibili")
+    else:
+        print("I due valori NON sono compatibili")
+
+
 """Funzione per fare lo scatter"""
 
 def scatter_plot_with_error(x, y, sigma_y, xlabel, ylabel, title, sigma_x=None, axhline_value=None):
