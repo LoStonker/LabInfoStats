@@ -17,6 +17,29 @@ from matplotlib.ticker import AutoMinorLocator
 
 
 
+"""Funzione per fare il test di Student, in xname basta mettere il nome che voglio printi"""
+
+def Tstudent(x, y, sigma_x, sigma_y, x_name="x", y_name="y"):
+    T = np.abs((x - y) / np.sqrt(sigma_x**2 + sigma_y**2))
+    df = (sigma_x**2 + sigma_y**2)**2 / ((sigma_x**4) + (sigma_y**4))
+    p_value = 2 * (1 - t.cdf(T, df))
+    
+    print(f"Il test di compatibilità tra il valore di {x_name} e {y_name} vale: {p_value:.4f}")
+    if p_value > 0.05:
+        print("I due valori sono compatibili")
+    else:
+        print("I due valori non sono compatibili")
+
+
+"""Seconda funzione per il T-test, questa utilizza array, ha come ingresso array"""
+
+def t_test2(x1, x2, err1, err2) : 
+	T = np.absolute(x1-x2)/np.sqrt(err1**2+err2**2)
+	R = t.cdf(-T, df=len(x1)-1)
+	p_value = R*2
+	return p_value
+
+
 """Funzione per fare lo scatter"""
 
 def scatter_plot_with_error(x, y, sigma_y, xlabel, ylabel, title, sigma_x=None, axhline_value=None):
@@ -1334,9 +1357,4 @@ def t_test1(x1, X, err_media) :
 	p_value = R*2
 	return p_value
 	
-# t test con 2 vincoli
-def t_test2(x1, x2, err1, err2) : 
-	t = np.absolute(x1-x2)/np.sqrt(err1**2+err2**2)
-	R = t.cdf(-t, df=len(x1)-1)
-	p_value = R*2
-	return p_value
+
