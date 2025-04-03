@@ -19,43 +19,42 @@ from matplotlib.ticker import AutoMinorLocator
 
 """Funzione per fare lo scatter"""
 
-def scatter_plot_with_error(x, y, sigma_y, xlabel, ylabel, title, sigma_x=None, axhline_value=None):
+def scatter_plot_with_error(x, y, sigma_y, xlabel, ylabel, title, sigma_x=None, axhline=None):
     """
-    Crea uno scatter plot dei dati con barre d'errore e opzioni di personalizzazione.
+    Crea uno scatter plot dei dati con barre d'errore e linea connettente tra i punti.
     
     Parametri:
       x: array-like, dati dell'asse x
       y: array-like, dati dell'asse y
       sigma_y: array-like, errori associati a y
+      sigma_x: array-like, errori associati a x (opzionale)
+      axhline_value: float, valore y dove disegnare una linea orizzontale (default: None, nessuna linea)
       xlabel: string, etichetta per l'asse x
       ylabel: string, etichetta per l'asse y
       title: string, titolo del grafico
-      sigma_x: array-like, errori associati a x (opzionale)
-      axhline_value: float, valore y dove disegnare una linea orizzontale (default: None, nessuna linea) (opzionale)
     """
     
     # Creazione della figura
     plt.figure(figsize=(10, 5), dpi=100)
     plt.style.use('seaborn-v0_8-notebook')
     
-    # Plot delle barre di errore con maggiore visibilità, includendo anche sigma_x se fornito
+    # Plot delle barre di errore e linea connettente
+    # fmt='-' disegna una linea connettente (senza marker) che poi verrà evidenziata dallo scatter plot
     plt.errorbar(
         x,
         y,
         xerr=sigma_x,
         yerr=sigma_y,
-        fmt='o',                    # marker circolare per evidenziare i dati
-        markersize=5,
-        markerfacecolor='purple',
-        markeredgecolor='black',
-        ecolor='orange',               # colore rosso per le barre di errore
-        elinewidth=1.5,               # spessore maggiore della linea degli errori
+        fmt='-',
+        color='purple',             # colore della linea connettente
+        ecolor='red',               # colore delle barre di errore
+        elinewidth=3,               # spessore delle linee degli errori
         capsize=4,                  # dimensione dei "tappi" delle barre d'errore
         alpha=0.8,
         zorder=1
     )
     
-    # Scatter plot colorato: il colore è basato sul valore assoluto di y
+    # Scatter plot per evidenziare i singoli punti
     sc = plt.scatter(
         x,
         y,
@@ -68,7 +67,7 @@ def scatter_plot_with_error(x, y, sigma_y, xlabel, ylabel, title, sigma_x=None, 
         zorder=3
     )
     
-    # Aggiunta della linea orizzontale se specificata
+	# Aggiunta della linea orizzontale se specificata
     if axhline_value is not None:
         plt.axhline(axhline_value, color='gray', linestyle='--', linewidth=0.8, zorder=1)
     
@@ -93,7 +92,6 @@ def scatter_plot_with_error(x, y, sigma_y, xlabel, ylabel, title, sigma_x=None, 
     
     plt.tight_layout()
     plt.show()
-
 
 
 
