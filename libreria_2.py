@@ -24,11 +24,11 @@ def Tstudent(x, y, sigma_x, sigma_y, x_name="x", y_name="y"):
     df = (sigma_x**2 + sigma_y**2)**2 / ((sigma_x**4) + (sigma_y**4))
     p_value = 2 * (1 - t.cdf(T, df))
     
-    print(f"Il test di compatibilità tra il valore di {x_name} e {y_name} vale: {p_value:.4f}")
+    print(f"Il p-value del test di compatibilità tra il valore di {x_name} e {y_name} vale: {p_value:.4f}")
     if p_value > 0.05:
         print("I due valori sono compatibili")
     else:
-        print("I due valori non sono compatibili")
+        print("I due valori NON sono compatibili")
 
 
 """Seconda funzione per il T-test, questa utilizza array, ha come ingresso array"""
