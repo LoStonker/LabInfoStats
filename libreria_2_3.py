@@ -69,13 +69,10 @@ def scatter_plot_with_error(x, y, sigma_y, xlabel, ylabel, title, sigma_x=None, 
       ylabel: string, etichetta per l'asse y
       title: string, titolo del grafico
     """
-    
-    # Creazione della figura
+
     plt.figure(figsize=(10, 5), dpi=100)
     plt.style.use('seaborn-v0_8-notebook')
-    
-    # Plot delle barre di errore e linea connettente
-    # fmt='-' disegna una linea connettente (senza marker) che poi verrà evidenziata dallo scatter plot
+
     plt.errorbar(
         x,
         y,
@@ -85,12 +82,11 @@ def scatter_plot_with_error(x, y, sigma_y, xlabel, ylabel, title, sigma_x=None, 
         color='purple',             # colore della linea connettente
         ecolor='orange',               # colore delle barre di errore
         elinewidth=1.5,               # spessore delle linee degli errori
-        capsize=4,                  # dimensione dei "tappi" delle barre d'errore
+        capsize=4,                  
         alpha=0.8,
         zorder=1
     )
-    
-    # Scatter plot per evidenziare i singoli punti
+
     sc = plt.scatter(
         x,
         y,
@@ -102,20 +98,16 @@ def scatter_plot_with_error(x, y, sigma_y, xlabel, ylabel, title, sigma_x=None, 
         linewidths=0.5,
         zorder=3
     )
-    
-	# Aggiunta della linea orizzontale se specificata
+
     if axhline_value is not None:
         plt.axhline(axhline_value, color='gray', linestyle='--', linewidth=0.8, zorder=1)
-    
-    # Aggiunta della griglia
+
     plt.grid(True, which='both', linestyle=':', linewidth=0.7, alpha=0.5)
-    
-    # Titolo ed etichette
+
     plt.title(title, fontsize=14, pad=20)
     plt.xlabel(xlabel, fontsize=12, labelpad=10)
     plt.ylabel(ylabel, fontsize=12, labelpad=10)
-    
-    # Personalizzazione degli assi
+
     ax = plt.gca()
     ax.xaxis.set_minor_locator(AutoMinorLocator(5))
     ax.yaxis.set_minor_locator(AutoMinorLocator(5))
@@ -775,8 +767,7 @@ class FitScipy:
         self.fit_result = {name: (val, np.sqrt(pcov[i,i])) 
                           for i, (name, val) in enumerate(zip(self.param_names, popt))}
         self.cov_matrix = pcov
-        
-        # Calcola chi2 ridotto
+
         residuals = self.y - self.model(self.x, *popt)
         self.chi2_val = np.sum((residuals / self.sigma)**2)
         self.dof = len(self.x) - len(popt)
@@ -796,8 +787,7 @@ class FitScipy:
         """Genera il plot dei risultati"""
         plt.figure(figsize=(10, 6))
         plt.errorbar(self.x, self.y, yerr=self.sigma, fmt='o', label='Dati', markersize=7, capsize=4)
-        
-        # Genera curva di fit
+
         x_fit = np.linspace(self.x.min(), self.x.max(), 1000)
         params = [self.fit_result[name][0] for name in self.param_names]
         y_fit = self.model(x_fit, *params)
@@ -844,7 +834,6 @@ class FitScipy2_0:
         sig = inspect.signature(model_func)
         self.param_names = list(sig.parameters.keys())[1:]  # Esclude il primo parametro (x)
         
-        # Mappatura parametri -> ordine per curve_fit
         self.initial_params_list = [initial_params[name] for name in self.param_names]
         
         self.fit_result = None
