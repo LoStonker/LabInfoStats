@@ -122,7 +122,7 @@ def scatter_plot_with_error(x, y, sigma_y, xlabel, ylabel, title, sigma_x=None, 
     plt.show()
 
 
-def scatter_plot_with_error(x, y, sigma_y, xlabel, ylabel, title, sigma_x=None, axhline_value=None):
+def scatter_plot_log_with_error(x, y, sigma_y, xlabel, ylabel, title, sigma_x=None, axhline_value=None):
     """
     Crea uno scatter plot dei dati con barre d'errore e linea connettente tra i punti,
     con scala bilogaritmica (log-log).
