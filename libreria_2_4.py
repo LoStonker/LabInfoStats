@@ -122,6 +122,77 @@ def scatter_plot_with_error(x, y, sigma_y, xlabel, ylabel, title, sigma_x=None, 
     plt.show()
 
 
+def scatter_plot_with_error(x, y, sigma_y, xlabel, ylabel, title, sigma_x=None, axhline_value=None):
+    """
+    Crea uno scatter plot dei dati con barre d'errore e linea connettente tra i punti,
+    con scala bilogaritmica (log-log).
+    
+    Parametri:
+      x: array-like, dati dell'asse x
+      y: array-like, dati dell'asse y
+      sigma_y: array-like, errori associati a y
+      sigma_x: array-like, errori associati a x (opzionale)
+      axhline_value: float, valore y dove disegnare una linea orizzontale (default: None, nessuna linea)
+      xlabel: string, etichetta per l'asse x
+      ylabel: string, etichetta per l'asse y
+      title: string, titolo del grafico
+    """
+    plt.figure(figsize=(10, 5), dpi=100)
+    plt.style.use('seaborn-v0_8-notebook')
+    
+    # Imposta entrambi gli assi in scala logaritmica
+    plt.xscale('log')
+    plt.yscale('log')
+    
+    plt.errorbar(
+        x,
+        y,
+        xerr=sigma_x,
+        yerr=sigma_y,
+        fmt='-',
+        color='purple',             # colore della linea connettente
+        ecolor='orange',            # colore delle barre di errore
+        elinewidth=1.5,             # spessore delle linee degli errori
+        capsize=4,                  
+        alpha=0.8,
+        zorder=1
+    )
+    sc = plt.scatter(
+        x,
+        y,
+        c=np.abs(y),
+        cmap='viridis',
+        s=45,
+        alpha=0.8,
+        edgecolors='k',
+        linewidths=0.5,
+        zorder=3
+    )
+    if axhline_value is not None:
+        plt.axhline(axhline_value, color='gray', linestyle='--', linewidth=0.8, zorder=1)
+    
+    # Configurazione della griglia specifica per i grafici logaritmici
+    plt.grid(True, which='major', linestyle='-', linewidth=0.7, alpha=0.5)
+    plt.grid(True, which='minor', linestyle=':', linewidth=0.4, alpha=0.3)
+    
+    plt.title(title, fontsize=14, pad=20)
+    plt.xlabel(xlabel, fontsize=12, labelpad=10)
+    plt.ylabel(ylabel, fontsize=12, labelpad=10)
+    
+    # Configurazione dei tick per scale logaritmiche
+    ax = plt.gca()
+    ax.tick_params(axis='both', which='major', labelsize=10)
+    ax.tick_params(axis='both', which='minor', labelsize=8)
+    
+    # Barra dei colori
+    cbar = plt.colorbar(sc)
+    cbar.set_label('Ampiezza (V)', rotation=270, labelpad=15)
+    cbar.ax.tick_params(labelsize=9)
+    
+    plt.tight_layout()
+    plt.show()
+
+
 
 """
 Funzione per fare i fit con ODR
