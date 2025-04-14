@@ -16,6 +16,511 @@ from scipy.odr import Model, RealData, ODR
 from matplotlib.ticker import AutoMinorLocator
 
 
+""" Funzione unica per fare i fit 
+ESEMPIO DI UTILIZZO
+    def exp_model(x, A, B):
+        return A * np.exp(B * x)
+
+    x_exp = np.linspace(1, 5, 15)
+    y_exp_true = exp_model(x_exp, 100, -0.8)
+    y_exp_noise = np.random.normal(0, y_exp_true * 0.2, len(x_exp)) # Errore proporzionale
+    y_exp_data = y_exp_true + y_exp_noise
+    sigma_y_exp = np.abs(y_exp_true * 0.2) # Stima dell'errore
+
+    # Rendi positivi i dati y per scala log
+    y_exp_data[y_exp_data <= 0] = 1e-3
+    sigma_y_exp[sigma_y_exp <= 0] = 1e-3
+
+    data_exp = {'x': x_exp, 'y': y_exp_data, 'sigma_y': sigma_y_exp}
+    init_exp = {'A': 90, 'B': -0.7}
+
+    fit_log = FitBomberone(exp_model, data_exp, init_exp, fit_method='Scipy',
+                        title="Fit Esponenziale con Scala Log", ylabel = 'Dio stronzo', xlabel = 'Dio merda')
+    fit_log.perform_fit().print_results()
+    fit_log.plot_results(log_scale_y=True, log_scale_x=True, info_box_pos='upper right')"""
+
+
+class FitBomberone:
+    """
+    Classe unificata per eseguire fit di dati con diversi metodi.
+
+    Permette di scegliere tra:
+    - 'LeastSquares': Minimi quadrati usando iminuit.cost.LeastSquares (richiede iminuit).
+    - 'Chi2': Minimizzazione del Chi-quadro usando Minuit (richiede iminuit).
+    - 'Scipy': Minimi quadrati usando scipy.optimize.curve_fit (richiede scipy).
+    - 'ODR': Orthogonal Distance Regression (richiede scipy). Gestisce errori su x e y.
+
+    Offre opzioni per personalizzare il plot dei risultati, inclusa la posizione
+    del box informativo e l'uso della scala logaritmica sull'asse y.
+    """
+    def __init__(self, model_func, data_arrays, initial_params,
+                 fit_method='LeastSquares', xlabel="x", ylabel="y", title="Risultati del fit"):
+        """
+
+        Args:
+            model_func (callable): La funzione modello da fittare.
+                Deve accettare come primo argomento l'array delle x e poi i parametri
+                del fit come argomenti nominali (keyword arguments), es: def my_model(x, a, b, c): ...
+            data_arrays (dict): Dizionario contenente i dati. Deve avere le chiavi:
+                'x': array dei valori x.
+                'y': array dei valori y.
+                'sigma_y': array degli errori su y (deviazioni standard).
+                Può opzionalmente contenere:
+                'sigma_x': array degli errori su x (deviazioni standard). Necessario solo per il metodo 'ODR'.
+                           Se non fornito e si usa 'ODR', verrà assunto come zero.
+            initial_params (dict): Dizionario con i valori iniziali per i parametri del fit.
+                                   Le chiavi devono corrispondere ai nomi dei parametri in model_func.
+            fit_method (str, optional): Il metodo di fit da utilizzare.
+                                        Opzioni: 'LeastSquares', 'Chi2', 'Scipy', 'ODR'.
+                                        Default: 'LeastSquares'.
+            xlabel (str, optional): Etichetta per l'asse x del grafico. Default: "x".
+            ylabel (str, optional): Etichetta per l'asse y del grafico. Default: "y".
+            title (str, optional): Titolo del grafico. Default: "Risultati del fit".
+        """
+        # --- Validazione Input Iniziale ---
+        valid_methods = ['LeastSquares', 'Chi2', 'Scipy', 'ODR']
+        if fit_method not in valid_methods:
+            raise ValueError(f"Metodo di fit '{fit_method}' non valido. Scegliere tra: {valid_methods}")
+
+        if not callable(model_func):
+             raise TypeError("model_func deve essere una funzione eseguibile.")
+        if not isinstance(data_arrays, dict):
+             raise TypeError("data_arrays deve essere un dizionario.")
+        if not isinstance(initial_params, dict):
+             raise TypeError("initial_params deve essere un dizionario.")
+
+        # --- Memorizzazione Attributi ---
+        self.model = model_func
+        self.fit_method = fit_method
+        self.xlabel = xlabel
+        self.ylabel = ylabel
+        self.title = title
+
+        # --- Estrazione Dati ---
+        self.x = np.asarray(data_arrays['x'])
+        self.y = np.asarray(data_arrays['y'])
+        self.sigma_y = np.asarray(data_arrays.get('sigma_y', np.ones_like(self.y)))
+
+        # Gestione sigma_x (rilevante solo per ODR)
+        if 'sigma_x' in data_arrays:
+             self.sigma_x = np.asarray(data_arrays['sigma_x'])
+        elif fit_method == 'ODR':
+             print("Attenzione: sigma_x non fornito per il metodo ODR. Verrà assunto nullo.")
+             self.sigma_x = np.zeros_like(self.x)
+        else:
+             self.sigma_x = None # Non necessario per altri metodi
+
+        # --- Estrazione Parametri ---
+        sig = inspect.signature(model_func)
+        all_param_names = list(sig.parameters.keys())
+        if not all_param_names:
+             raise ValueError("La funzione modello non sembra accettare argomenti.")
+        # Il primo argomento è assunto essere la variabile indipendente (x)
+        self.param_names = all_param_names[1:]
+        if not self.param_names:
+             raise ValueError("La funzione modello deve accettare almeno un parametro oltre alla variabile indipendente.")
+
+        self.initial_params = initial_params
+
+        # --- Inizializzazione Risultati ---
+        self.fit_result = None    # Dizionario {nome: (valore, errore)}
+        self.m = None             # Oggetto Minuit (per LeastSquares, Chi2)
+        self.odr_output = None    # Oggetto Output di ODR
+        self.popt = None          # Parametri ottimizzati da Scipy
+        self.pcov = None          # Matrice di covarianza da Scipy
+        self.chi2_val = None      # Valore del Chi-quadro
+        self.dof = None           # Gradi di libertà
+        self.p_value = None       # p-value del fit
+        self.is_fit_valid = False # Flag per la validità del fit (es. da Minuit)
+
+        # --- Validazione Input Dettagliata ---
+        self._validate_inputs()
+
+    def _validate_inputs(self):
+        """Controlla la consistenza degli array di input e dei parametri."""
+        if not (len(self.x) == len(self.y) == len(self.sigma_y)):
+            raise ValueError("Gli array x, y e sigma_y devono avere la stessa lunghezza.")
+        if self.sigma_x is not None and len(self.x) != len(self.sigma_x):
+             raise ValueError("Gli array x e sigma_x devono avere la stessa lunghezza.")
+
+        # Verifica che sigma_y non contenga zeri o valori non positivi se usati come errori
+        if np.any(self.sigma_y <= 0):
+            print("Attenzione: sigma_y contiene valori nulli o negativi. Questo può causare problemi nel fit.")
+            # Potresti voler sollevare un errore o sostituire questi valori a seconda del contesto
+            # raise ValueError("sigma_y non può contenere valori nulli o negativi.")
+
+        # Verifica parametri iniziali
+        missing_params = set(self.param_names) - set(self.initial_params.keys())
+        extra_params = set(self.initial_params.keys()) - set(self.param_names)
+        if missing_params:
+            raise ValueError(f"Parametri iniziali mancanti per: {missing_params}")
+        if extra_params:
+            raise ValueError(f"Parametri iniziali non richiesti dalla funzione modello: {extra_params}")
+
+    # --- Funzioni Ausiliarie per Fit Specifici ---
+
+    def _odr_model_wrapper(self, B, x):
+        """Wrapper per la funzione modello richiesta da scipy.odr."""
+        params_dict = {name: value for name, value in zip(self.param_names, B)}
+        return self.model(x, **params_dict)
+
+    def _chi2_func_wrapper(self, *args):
+        """Wrapper per la funzione Chi-quadro richiesta da Minuit."""
+        params_dict = {name: val for name, val in zip(self.param_names, args)}
+        y_model = self.model(self.x, **params_dict)
+        # Evita divisione per zero se sigma_y è zero (anche se _validate_inputs avverte)
+        # Si potrebbe usare np.where o aggiungere un piccolo epsilon, ma qui usiamo mask
+        valid_sigma = self.sigma_y > 0
+        residuals = np.zeros_like(self.y)
+        residuals[valid_sigma] = (self.y[valid_sigma] - y_model[valid_sigma]) / self.sigma_y[valid_sigma]
+        return np.sum(residuals**2)
+
+    # --- Metodi di Fit ---
+
+    def _fit_odr(self):
+        """Esegue il fit usando Orthogonal Distance Regression (ODR)."""
+        if self.sigma_x is None:
+             # Questo non dovrebbe accadere grazie al check in __init__, ma per sicurezza
+             print("Avviso: ODR richiede sigma_x. Assumendo sigma_x = 0.")
+             self.sigma_x = np.zeros_like(self.x)
+
+        beta0 = [self.initial_params[name] for name in self.param_names]
+        odr_model = Model(self._odr_model_wrapper)
+        data = RealData(self.x, self.y, sx=self.sigma_x, sy=self.sigma_y)
+        odr = ODR(data, odr_model, beta0=beta0)
+        self.odr_output = odr.run()
+
+        if self.odr_output.info > 0: # Controlla se il fit è terminato con successo
+            self.fit_result = {name: (val, err) for name, val, err in zip(self.param_names, self.odr_output.beta, self.odr_output.sd_beta)}
+            self.chi2_val = self.odr_output.sum_square # ODR chiama chi2 'sum_square'
+            self.dof = len(self.x) - len(self.param_names)
+            self.p_value = 1 - chi2.cdf(self.chi2_val, self.dof) if self.dof > 0 else 0
+            self.is_fit_valid = True
+        else:
+             print(f"Errore ODR: Il fit non è converguto (codice info: {self.odr_output.info}).")
+             # Potresti voler popolare self.fit_result con NaN o valori iniziali
+             self.fit_result = {name: (self.initial_params[name], np.nan) for name in self.param_names}
+             self.is_fit_valid = False
+
+
+    def _fit_least_squares(self):
+        """Esegue il fit usando iminuit.cost.LeastSquares."""
+        try:
+             # LeastSquares accetta direttamente la funzione modello con keyword args
+             least_squares_cost = LeastSquares(self.x, self.y, self.sigma_y, self.model)
+             self.m = Minuit(least_squares_cost, **self.initial_params)
+             self.m.migrad()  # Esegui minimizzazione
+             self.m.hesse()   # Calcola errori accurati (matrice di Hesse)
+
+             self.is_fit_valid = self.m.valid
+             if not self.is_fit_valid:
+                  print("Attenzione: La covarianza del fit (LeastSquares) non è valida. Gli errori potrebbero essere inaffidabili.")
+
+             self.fit_result = {name: (self.m.values[name], self.m.errors[name]) for name in self.param_names}
+             self.chi2_val = self.m.fval # Minuit chiama chi2 'fval'
+             self.dof = self.m.ndof
+             self.p_value = self.m.fval / self.dof if self.dof > 0 else 0 # Chi2 p-value
+             self.p_value = chi2.sf(self.m.fval, self.m.ndof) # Modo corretto con scipy.stats.chi2.sf (survival function)
+
+        except Exception as e:
+             print(f"Errore durante il fit LeastSquares con Minuit: {e}")
+             self.is_fit_valid = False
+             self.fit_result = {name: (self.initial_params[name], np.nan) for name in self.param_names}
+
+
+    def _fit_chi2(self):
+        """Esegue il fit minimizzando il Chi-quadro con Minuit."""
+        try:
+            # Minuit richiede che la funzione da minimizzare accetti parametri posizionali
+            initial_values_list = [self.initial_params[name] for name in self.param_names]
+            # Assegna nomi ai parametri per Minuit per migliore output
+            self.m = Minuit(self. _chi2_func_wrapper, *initial_values_list, name=self.param_names)
+            self.m.errordef = Minuit.LEAST_SQUARES # Imposta errordef a 1 per Chi2/Least Squares
+            self.m.migrad()
+            self.m.hesse()
+
+            self.is_fit_valid = self.m.valid
+            if not self.is_fit_valid:
+                 print("Attenzione: La covarianza del fit (Chi2) non è valida. Gli errori potrebbero essere inaffidabili.")
+
+            # Recupera i risultati usando i nomi dei parametri
+            self.fit_result = {name: (self.m.values[name], self.m.errors[name]) for name in self.param_names}
+            self.chi2_val = self.m.fval
+            self.dof = len(self.x) - len(self.param_names) # m.ndof potrebbe non essere corretto qui
+            # self.p_value = self.m.fcn(self.m.values) / self.dof if self.dof > 0 else 0
+            self.p_value = chi2.sf(self.m.fval, self.dof) if self.dof > 0 else 0
+
+        except Exception as e:
+            print(f"Errore durante il fit Chi2 con Minuit: {e}")
+            self.is_fit_valid = False
+            self.fit_result = {name: (self.initial_params[name], np.nan) for name in self.param_names}
+
+    def _fit_scipy(self):
+        """Esegue il fit usando scipy.optimize.curve_fit."""
+        try:
+            # curve_fit preferisce parametri posizionali, ma può gestire keyword se la firma corrisponde
+            # Per sicurezza e coerenza, potremmo creare un wrapper, ma proviamo direttamente
+            # La funzione modello DEVE avere la forma func(x, p1, p2, ...) per curve_fit
+
+            # Assicurati che l'ordine dei parametri iniziali corrisponda a self.param_names
+            initial_params_list = [self.initial_params[name] for name in self.param_names]
+
+            self.popt, self.pcov = curve_fit(
+                self.model,
+                self.x,
+                self.y,
+                p0=initial_params_list,
+                sigma=self.sigma_y,
+                absolute_sigma=True # Tratta sigma come deviazioni standard assolute
+            )
+
+            errors = np.sqrt(np.diag(self.pcov))
+            self.fit_result = {name: (val, err) for name, val, err in zip(self.param_names, self.popt, errors)}
+
+            # Calcola Chi2 manualmente
+            residuals = self.y - self.model(self.x, *self.popt)
+            # Evita divisione per zero se sigma_y è zero
+            valid_sigma = self.sigma_y > 0
+            chisq_terms = np.zeros_like(self.y)
+            chisq_terms[valid_sigma] = (residuals[valid_sigma] / self.sigma_y[valid_sigma])**2
+            self.chi2_val = np.sum(chisq_terms)
+
+            self.dof = len(self.x) - len(self.popt)
+            self.p_value = chi2.sf(self.chi2_val, self.dof) if self.dof > 0 else 0
+            self.is_fit_valid = True # curve_fit non ha un flag di validità diretto come Minuit, ma se non lancia eccezioni...
+
+        except RuntimeError as e:
+             print(f"Errore durante il fit con Scipy (curve_fit): {e}. Il fit potrebbe non essere converguto.")
+             self.is_fit_valid = False
+             self.popt = [self.initial_params[name] for name in self.param_names]
+             self.pcov = np.full((len(self.param_names), len(self.param_names)), np.nan)
+             self.fit_result = {name: (self.initial_params[name], np.nan) for name in self.param_names}
+             self.chi2_val = np.nan
+             self.dof = len(self.x) - len(self.param_names)
+             self.p_value = np.nan
+        except Exception as e:
+             print(f"Errore imprevisto durante il fit con Scipy: {e}")
+             self.is_fit_valid = False
+             self.fit_result = {name: (self.initial_params[name], np.nan) for name in self.param_names}
+             # Inizializza gli altri attributi a NaN o valori predefiniti
+             self.popt, self.pcov, self.chi2_val, self.dof, self.p_value = None, None, None, None, None
+
+
+    # --- Metodo Principale per Eseguire il Fit ---
+
+    def perform_fit(self):
+        """Esegue il fit utilizzando il metodo specificato in __init__."""
+        print(f"--- Esecuzione Fit con Metodo: {self.fit_method} ---")
+        if self.fit_method == 'ODR':
+            self._fit_odr()
+        elif self.fit_method == 'LeastSquares':
+            self._fit_least_squares()
+        elif self.fit_method == 'Chi2':
+            self._fit_chi2()
+        elif self.fit_method == 'Scipy':
+            self._fit_scipy()
+        else:
+            # Questo non dovrebbe accadere grazie al check in __init__
+            raise ValueError(f"Metodo di fit '{self.fit_method}' non riconosciuto.")
+
+        if self.fit_result is None:
+             print("Errore: Il fit non ha prodotto risultati.")
+             self.is_fit_valid = False
+        elif not self.is_fit_valid:
+             print("Avviso: Il fit potrebbe non essere valido o non essere converguto.")
+        else:
+            print("Fit completato.")
+
+        # Restituisce self per permettere il chaining, es. fit.perform_fit().print_results()
+        return self
+
+    # --- Metodi per Visualizzare i Risultati ---
+
+    def print_results(self):
+        """Stampa i risultati del fit (parametri, chi2, p-value)."""
+        if self.fit_result is None:
+            print("Errore: Nessun risultato del fit disponibile. Eseguire prima perform_fit().")
+            return
+
+        print(f"\n--- Risultati del Fit ({self.fit_method}) ---")
+        print(f"Fit Valido: {'Sì' if self.is_fit_valid else 'No'}")
+
+        print("\nParametri Ottimizzati:")
+        for name in self.param_names:
+            val, err = self.fit_result.get(name, (np.nan, np.nan)) # Gestisce il caso di fit fallito
+            print(f"  {name} = {val:.4g} ± {err:.2g}") # Formato più leggibile
+
+        if self.chi2_val is not None and self.dof is not None and self.dof > 0:
+            chi2_rid = self.chi2_val / self.dof
+            print(f"\nStatistiche del Fit:")
+            print(f"  Chi-quadro (χ²): {self.chi2_val:.4f}")
+            print(f"  Gradi di libertà (DoF): {self.dof}")
+            print(f"  Chi-quadro Ridotto (χ²/DoF): {chi2_rid:.4f}")
+            if self.p_value is not None:
+                print(f"  p-value: {self.p_value:.4f}")
+        elif self.dof == 0:
+             print("\nStatistiche del Fit:")
+             print(f"  Chi-quadro (χ²): {self.chi2_val:.4f}")
+             print(f"  Gradi di libertà (DoF): {self.dof}")
+             print("  Attenzione: Con 0 gradi di libertà, Chi2 ridotto e p-value non sono definiti.")
+        else:
+            print("\nStatistiche del Fit non disponibili (Chi2/DoF potrebbero non essere stati calcolati).")
+
+        # Stampa informazioni aggiuntive da Minuit se disponibili
+        if self.m and (self.fit_method == 'LeastSquares' or self.fit_method == 'Chi2'):
+             # print(f"\nMinuit Fit Status: {self.m.fmin}") # fmin contiene info dettagliate
+             if hasattr(self.m, 'covariance') and self.m.covariance is not None:
+                  print("\nMatrice di Covarianza (Minuit):")
+                  # Stampa la matrice in modo leggibile
+                  # for row in self.m.covariance:
+                  #      print("  [" + ", ".join(f"{x: .2e}" for x in row) + "]")
+                  pass # Potrebbe essere troppo verboso, lo lascio commentato
+             else:
+                  print("\nMatrice di Covarianza (Minuit): non disponibile o non valida.")
+        # Stampa matrice covarianza da Scipy
+        elif self.pcov is not None and self.fit_method == 'Scipy':
+             print("\nMatrice di Covarianza (Scipy):")
+             # for row in self.pcov:
+             #      print("  [" + ", ".join(f"{x: .2e}" for x in row) + "]")
+             pass # Anche qui, potenzialmente verboso
+
+
+    def _get_info_box_coords(self, position='upper left', pad=0.05):
+        """Restituisce coordinate e allineamento per plt.annotate."""
+        positions = {
+            'upper left':   {'xy': (pad, 1 - pad), 'ha': 'left', 'va': 'top'},
+            'upper right':  {'xy': (1 - pad, 1 - pad), 'ha': 'right', 'va': 'top'},
+            'lower left':   {'xy': (pad, pad), 'ha': 'left', 'va': 'bottom'},
+            'lower right':  {'xy': (1 - pad, pad), 'ha': 'right', 'va': 'bottom'},
+            'upper center': {'xy': (0.5, 1 - pad), 'ha': 'center', 'va': 'top'},
+            'lower center': {'xy': (0.5, pad), 'ha': 'center', 'va': 'bottom'},
+            'center left':  {'xy': (pad, 0.5), 'ha': 'left', 'va': 'center'},
+            'center right': {'xy': (1 - pad, 0.5), 'ha': 'right', 'va': 'center'},
+            'center':       {'xy': (0.5, 0.5), 'ha': 'center', 'va': 'center'},
+        }
+        # Se viene passata una tupla (x, y), usala direttamente
+        if isinstance(position, (tuple, list)) and len(position) == 2:
+             return {'xy': tuple(position), 'ha': 'center', 'va': 'center'} # Default alignment for custom coords
+
+        return positions.get(position.lower().replace("_", " "), positions['upper left']) # Default a upper left
+
+    def plot_results(self, title_fontsize=14, label_fontsize=12,
+                     info_box_pos='upper right', log_scale_y=False, log_scale_x=False):
+        """
+        Genera un grafico dei dati fittati con la curva di fit e un box informativo.
+
+        Args:
+            title_fontsize (int, optional): Dimensione del font per il titolo. Default: 14.
+            label_fontsize (int, optional): Dimensione del font per le etichette degli assi. Default: 12.
+            info_box_pos (str or tuple, optional): Posizione del box informativo.
+                Può essere una stringa come 'upper left', 'center right', etc.,
+                o una tupla (x, y) in coordinate relative agli assi (0-1).
+                Default: 'upper right'.
+            log_scale_y (bool, optional): Se True, imposta la scala logaritmica per l'asse y.
+                                         Default: False.
+        """
+        if self.fit_result is None:
+            print("Errore: Nessun risultato del fit disponibile per il plot. Eseguire prima perform_fit().")
+            return
+        if not self.is_fit_valid:
+             print("Attenzione: Si sta plottando un fit non valido o non converguto.")
+
+        plt.figure(figsize=(10, 7)) # Leggermente più alta per dare spazio
+        ax = plt.gca() # Get current axes
+
+        # --- Plot Dati ---
+        plot_kwargs = {'fmt': 'o', 'label': 'Dati', 'markersize': 6, 'capsize': 4, 'elinewidth': 1.5}
+        # Includi errori x se disponibili e significativi (o se ODR)
+        if self.sigma_x is not None and np.any(self.sigma_x > 1e-9):
+             ax.errorbar(self.x, self.y, xerr=self.sigma_x, yerr=self.sigma_y, **plot_kwargs)
+             print("Plotting con errori su X e Y.")
+        else:
+             ax.errorbar(self.x, self.y, yerr=self.sigma_y, **plot_kwargs)
+
+        # --- Plot Curva di Fit ---
+        # Genera più punti per una curva liscia
+        if len(self.x) > 1:
+             x_min, x_max = np.min(self.x), np.max(self.x)
+             # Estendi leggermente il range per non tagliare la curva ai bordi
+             range_ext = (x_max - x_min) * 0.02
+             x_fit = np.linspace(x_min - range_ext, x_max + range_ext, 500)
+        else:
+             # Gestisce caso con un solo punto dati
+             x_fit = np.array([self.x[0] - 1, self.x[0], self.x[0] + 1]) # Un piccolo range intorno
+
+        # Prendi i valori fittati (ignora gli errori qui)
+        fitted_params_dict = {name: val_err[0] for name, val_err in self.fit_result.items()}
+        try:
+             y_fit = self.model(x_fit, **fitted_params_dict)
+             ax.plot(x_fit, y_fit, '-r', label=f'Fit ({self.fit_method})', linewidth=2)
+        except Exception as e:
+             print(f"Errore nel calcolare la curva di fit per il plot: {e}")
+             print("La curva di fit potrebbe non essere visualizzata.")
+
+
+        # --- Impostazioni Grafico ---
+        ax.set_xlabel(self.xlabel, fontsize=label_fontsize)
+        ax.set_ylabel(self.ylabel, fontsize=label_fontsize)
+        ax.set_title(self.title, fontsize=title_fontsize, pad=15) # Aumenta pad per spazio
+
+        if log_scale_y:
+            ax.set_yscale('log')
+            # Aggiusta limiti y se necessario in scala log
+            # Potrebbe essere necessario gestire y <= 0 nei dati
+            min_y = np.min(self.y[self.y > 0]) if np.any(self.y > 0) else 1e-9
+            # ax.set_ylim(bottom=min_y * 0.5) # Esempio di aggiustamento
+
+        if log_scale_x:
+            ax.set_xscale('log')
+            min_x = np.min(self.x[self.x > 0]) if np.any(self.x > 0) else 1e-9
+
+        ax.grid(True, which='major', linestyle='-', linewidth='0.5', color='gray', alpha=0.7)
+        ax.grid(True, which='minor', linestyle=':', linewidth='0.5', color='gray', alpha=0.4)
+        ax.minorticks_on() # Abilita minor ticks
+
+        # --- Box Informativo ---
+        box_text_lines = []
+        for name in self.param_names:
+             val, err = self.fit_result.get(name, (np.nan, np.nan))
+             # Usa notazione scientifica se necessario, altrimenti float più leggibile
+             if abs(val) > 1e4 or abs(val) < 1e-3:
+                  val_str = f"{val:.2e}"
+             else:
+                  val_str = f"{val:.3f}" # Aumenta precisione per float
+             err_str = f"{err:.2g}" # Usa 'g' per precisione automatica sull'errore
+             box_text_lines.append(f"${name} = {val_str} \\pm {err_str}$")
+
+        if self.chi2_val is not None and self.dof is not None and self.dof > 0:
+             chi2_rid_str = f"{self.chi2_val / self.dof:.3f}"
+             box_text_lines.append(f"$\\chi^2/N_{{dof}} = {chi2_rid_str}$")
+             if self.p_value is not None:
+                  p_val_str = f"{self.p_value:.3f}"
+                  box_text_lines.append(f"$p$-value $= {p_val_str}$")
+        elif self.chi2_val is not None:
+             # Mostra chi2 anche se DoF=0
+             chi2_str = f"{self.chi2_val:.3f}"
+             box_text_lines.append(f"$\\chi^2 = {chi2_str}$ (DoF=0)")
+
+
+        info_text = "\n".join(box_text_lines)
+        box_props = self._get_info_box_coords(info_box_pos)
+
+        ax.annotate(info_text,
+                    xy=box_props['xy'],
+                    xycoords='axes fraction',
+                    va=box_props['va'],
+                    ha=box_props['ha'],
+                    bbox=dict(boxstyle='round,pad=0.6', facecolor='white', alpha=0.85, edgecolor='gray'),
+                    fontsize=11, # Leggermente più piccolo per non sovrapporsi troppo
+                    linespacing=1.4)
+
+        ax.legend(fontsize=11)
+        plt.tight_layout(rect=[0, 0, 1, 0.97]) # Aggiusta layout per dare spazio al titolo
+        plt.show()
+
+
+
+
 
 """Funzione per fare il test di Student, in xname basta mettere il nome che voglio printi"""
 
