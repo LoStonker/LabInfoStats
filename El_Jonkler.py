@@ -537,8 +537,7 @@ def Tstudent(x, y, sigma_x, sigma_y, x_name="x", y_name="y"):
 
 
 """Seconda funzione per il T-test, questa utilizza array, ha come ingresso array"""
-
-def Tstudent(val1, val2, sigma1, sigma2, val1_name="Valore 1", val2_name="Valore 2", use_ttest=False, custom_df=None):
+def test_compatibilita(val1, val2, sigma1, sigma2, val1_name="Valore 1", val2_name="Valore 2", use_ttest=False, custom_df=None, significance_level=0.05):
     """
     Esegue un test di compatibilità tra due valori con le loro incertezze.
     Confronta la differenza con l'incertezza combinata.
@@ -550,31 +549,42 @@ def Tstudent(val1, val2, sigma1, sigma2, val1_name="Valore 1", val2_name="Valore
     use_ttest: Booleano. Se True, usa la distribuzione t di Student.
                  Se False (default), usa la distribuzione Normale standard.
     custom_df: Gradi di libertà da usare se use_ttest=True.
-                 Se None e use_ttest=True, tenta di calcolare df con Welch-Satterthwaite
-                 (ma nota che l'applicabilità a singole misure è dibattuta).
+                 Se None e use_ttest=True, tenta di calcolare df con l'approssimazione
+                 di Welch-Satterthwaite (adattata per singole misure, con cautela).
                  Se use_ttest=False, custom_df è ignorato.
+    significance_level: Livello di significatività alfa (default 0.05 per il 95% di confidenza).
 
     Ritorna:
     T_score: Il valore T (o Z per la normale).
     p_value: Il p-value a due code.
-    compatibili: Booleano (True se p_value > 0.05).
+    compatibili: Booleano (True se p_value > significance_level).
     """
+    # Inizializziamo le variabili che potrebbero non essere definite in tutti i percorsi
+    p_value = np.nan
+    compatibili = False
+    dist_type = "N/A"
+    T_score = np.nan # Inizializza anche T_score
+    df_to_print = "N/A" # Per stampare i df usati
+
     if sigma1 < 0 or sigma2 < 0:
-        print("Errore: Le incertezze (sigma) non possono essere negative.")
-        return np.nan, np.nan, False
+        print(f"Errore nel test tra {val1_name} e {val2_name}: Le incertezze (sigma) non possono essere negative.")
+        return T_score, p_value, compatibili
         
     denominatore_T = np.sqrt(sigma1**2 + sigma2**2)
 
-    if denominatore_T < 1e-15: # Praticamente zero, i valori devono essere identici per essere compatibili
-        if np.abs(val1 - val2) < 1e-15:
+    if denominatore_T < 1e-15: # Praticamente zero
+        if np.abs(val1 - val2) < 1e-15: # Anche la differenza è zero
             T_score = 0.0
             p_value = 1.0
             compatibili = True
-        else:
+            dist_type = "N/A (Valori identici con sigma zero)"
+        else: # Differenza non zero ma sigma del denominatore sì
             T_score = np.inf
             p_value = 0.0
             compatibili = False
-        print(f"\nTest di compatibilità tra {val1_name} e {val2_name}:")
+            dist_type = "N/A (Valori diversi con sigma denominatore zero)"
+        
+        print(f"\nTest di compatibilità tra {val1_name} ({val1:.3e} ± {sigma1:.2e}) e {val2_name} ({val2:.3e} ± {sigma2:.2e}):")
         print(f"  Incertezza combinata sul denominatore è quasi zero.")
         print(f"  Differenza: {np.abs(val1 - val2):.2e}")
         print(f"  T-score (o Z-score): {T_score:.2f}")
@@ -582,74 +592,91 @@ def Tstudent(val1, val2, sigma1, sigma2, val1_name="Valore 1", val2_name="Valore
         if compatibili:
             print(f"  I due valori ({val1_name} e {val2_name}) sono considerati identici (entro la precisione numerica).")
         else:
-            print(f"  I due valori ({val1_name} e {val2_name}) sono DIVERSI e le incertezze sono nulle/trascurabili.")
+            print(f"  I due valori ({val1_name} e {val2_name}) sono DIVERSI e/o le incertezze sul denominatore sono nulle/trascurabili.")
         return T_score, p_value, compatibili
 
     T_score = np.abs(val1 - val2) / denominatore_T
 
     if use_ttest:
+        df = np.nan # Inizializza df per il t-test
         if custom_df is not None:
             df = custom_df
             if df <= 0:
-                print("Errore: custom_df per t-test deve essere > 0.")
-                return T_score, np.nan, False
+                print(f"Errore nel test tra {val1_name} e {val2_name}: custom_df per t-test ({df}) deve essere > 0.")
+                return T_score, p_value, compatibili # p_value e compatibili rimangono inizializzati a NaN/False
         else:
-            # Approssimazione di Welch-Satterthwaite per i gradi di libertà
-            # (la sua applicazione a singole misure con sigma note è meno standard)
-            # Se sigma1 o sigma2 sono 0, df non è ben definito da questa formula
-            if sigma1 < 1e-9 or sigma2 < 1e-9: # Se una delle incertezze è quasi zero
-                 # In questo caso, la distribuzione t tende alla normale, o potremmo considerare df grande
-                 # Per evitare problemi, se una sigma è 0 e l'altra no, df dovrebbe dipendere da quella non nulla.
-                 # Se entrambe sono 0, è stato gestito sopra.
-                 # Qui, per semplicità, se si forza t-test e df non è dato e una sigma è ~0,
-                 # si potrebbe ricadere sulla normale o usare un df molto grande.
-                 # Per ora, la formula originale per df potrebbe dare problemi se una sigma è 0.
-                 # Modifichiamo la formula per df che avevi:
-                num_df = (sigma1**2 + sigma2**2)**2
-                den_df = ((sigma1**4) / (1 if sigma1 > 1e-9 else np.inf)) + \
-                           ((sigma2**4) / (1 if sigma2 > 1e-9 else np.inf)) # n_x-1 -> 1 per singola misura (euristico)
-                if den_df < 1e-15: # Evita divisione per zero se entrambe le sigma sono ~0
-                    print("Attenzione: Denominatore per df è zero nel t-test. Impossibile calcolare df robustamente.")
-                    # In questo scenario, sarebbe meglio usare la distribuzione normale.
-                    # Forziamo la normale se arriviamo qui per un t-test senza df custom.
-                    p_value = 2 * (1 - norm.cdf(T_score))
-                    dist_type = "Normale (fallback da t-test con df problematico)"
+            # Approssimazione di Welch-Satterthwaite per i gradi di libertà (adattata)
+            # num_df = (sigma1**2/n1 + sigma2**2/n2)**2
+            # den_df_part1 = ((sigma1**2/n1)**2)/(n1-1)
+            # den_df_part2 = ((sigma2**2/n2)**2)/(n2-1)
+            # Per singole misure, possiamo considerare n1=1, n2=1.
+            # Questo rende i denominatori n-1 uguali a 0, il che non va bene.
+            # La formula che avevi tu è un'approssimazione diversa:
+            # df = (sigma_x**2 + sigma_y**2)**2 / ((sigma_x**4 / (nx-1)) + (sigma_y**4 / (ny-1)))
+            # Se assumiamo che le sigma siano "ben note" (come se nx e ny fossero grandi),
+            # i denominatori (nx-1) diventano grandi.
+            # La tua formula era: df = (sigma_x**2 + sigma_y**2)**2 / (sigma_x**4 + sigma_y**4)
+            # Usiamo questa, con cautela e menzionando che è un'approssimazione.
+            
+            s1_sq = sigma1**2
+            s2_sq = sigma2**2
+            
+            if s1_sq < 1e-15 and s2_sq < 1e-15: # Entrambe le varianze sono zero
+                 # Questo caso dovrebbe essere già gestito da denominatore_T < 1e-15
+                 df = np.inf # o gestito come errore
+            else:
+                df_num = (s1_sq + s2_sq)**2
+                df_den = s1_sq**2 + s2_sq**2 # Se una sigma è 0, il suo termine s^4/ (n-1) non conta.
+                                          # Se n-1 fosse 1, allora è s1^4 + s2^4
+                if df_den < 1e-15: # Evita divisione per zero se entrambe le sigma quadrate sono zero
+                    print(f"Attenzione nel test tra {val1_name} e {val2_name}: Denominatore per df è zero nel t-test. Impossibile calcolare df robustamente.")
+                    return T_score, p_value, compatibili
                 else:
-                    df = num_df / den_df
-                    if df < 1: # Welch-Satterthwaite df può essere <1, ma cdf richiede df >= 1
-                        # print(f"Attenzione: df calcolato ({df:.2f}) < 1. Si userà la distribuzione Normale.")
-                        # p_value = 2 * (1 - norm.cdf(T_score)) # Fallback alla normale
-                        # dist_type = "Normale (fallback da t-test con df<1)"
-                        # Per semplicità, alcune implementazioni usano floor(df) o arrotondano a 1.
-                        # scipy.stats.t.cdf gestirà df non interi.
-                        # Se df è molto piccolo, il p-value sarà molto piccolo a meno che T non sia anche molto piccolo.
-                        pass # Lascia che t.cdf gestisca df non intero, potrebbe funzionare.
-                    p_value = 2 * (1 - t.cdf(T_score, df))
-                    dist_type = f"t di Student (df={df:.2f})"
-
-        if np.isnan(p_value): # Controllo aggiuntivo
-            print("Attenzione: p_value calcolato come NaN con t-test. Verificare df e T_score.")
-            compatibili = False # In caso di errore, assumi non compatibili
+                    df = df_num / df_den
+        
+        df_to_print = f"{df:.2f}"
+        if np.isinf(df): # Se df è infinito (può accadere se una sigma è zero e l'altra no con la formula usata)
+            p_value = 2 * (1 - norm.cdf(T_score))
+            dist_type = f"t di Student (df=infinito, equivale a Normale)"
+        elif df < 1:
+            # scipy.stats.t.cdf generalmente si aspetta df >= 1.
+            # Alcune fonti suggeriscono di usare df=1 o di non usare la t-distribuzione.
+            print(f"Attenzione nel test tra {val1_name} e {val2_name}: df calcolato ({df:.2f}) < 1. Il p-value del t-test potrebbe non essere affidabile.")
+            # Si potrebbe decidere di non calcolare p_value o usare un fallback
+            p_value = np.nan # In questo caso, è meglio non dare un p-value
+            dist_type = f"t di Student (df={df:.2f} - problematico)"
         else:
-            compatibili = p_value > 0.05
+            p_value = 2 * (1 - t.cdf(T_score, df))
+            dist_type = f"t di Student (df={df:.2f})"
+
+        if np.isnan(p_value):
+            print(f"Attenzione nel test tra {val1_name} e {val2_name}: p_value calcolato come NaN con t-test. Verificare df e T_score.")
+            # compatibili rimane False (dall'inizializzazione)
+        else:
+            compatibili = p_value > significance_level
 
     else: # Usa la distribuzione Normale standard
-        df = np.inf # Gradi di libertà per la normale
+        df_to_print = "infinito (Normale)"
         p_value = 2 * (1 - norm.cdf(T_score))
         dist_type = "Normale Standard"
-        compatibili = p_value > 0.05
+        compatibili = p_value > significance_level
         
     print(f"\nTest di compatibilità tra {val1_name} ({val1:.3e} ± {sigma1:.2e}) e {val2_name} ({val2:.3e} ± {sigma2:.2e}):")
     print(f"  Differenza: {np.abs(val1 - val2):.2e}")
     print(f"  Incertezza sulla differenza (denominatore di T): {denominatore_T:.2e}")
-    print(f"  T-score (o Z-score): {T_score:.2f}")
+    print(f"  Statistica del test (T o Z): {T_score:.2f}")
     print(f"  Distribuzione usata: {dist_type}")
+    if 'df=' in dist_type and not np.isinf(df if 'df' in locals() else np.nan) : # Stampa df solo se è stato calcolato e non è infinito
+         pass # df_to_print è già impostato
     print(f"  P-value (due code): {p_value:.4f}")
     
     if compatibili:
-        print(f"  I due valori sono COMPATIBILI (p > 0.05).")
+        print(f"  I due valori sono COMPATIBILI (p > {significance_level}).")
     else:
-        print(f"  I due valori NON sono compatibili (p <= 0.05).")
+        if np.isnan(p_value):
+             print(f"  Impossibile determinare la compatibilità (p-value è NaN).")
+        else:
+             print(f"  I due valori NON sono compatibili (p <= {significance_level}).")
         
     return T_score, p_value, compatibili
 
