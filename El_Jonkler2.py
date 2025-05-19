@@ -19,7 +19,7 @@ from matplotlib.ticker import AutoMinorLocator
 import numpy as np
 from scipy.stats import norm, t # Necessario per la funzione
 
-def test_compatibilita(val1, val2, sigma1, sigma2, val1_name="Valore 1", val2_name="Valore 2", use_ttest=False, custom_df=None, significance_level=0.05):
+def Tstudent(val1, val2, sigma1, sigma2, val1_name="Valore 1", val2_name="Valore 2", use_ttest=False, custom_df=None, significance_level=0.05):
     """
     Esegue un test di compatibilità tra due valori con le loro incertezze.
     """
