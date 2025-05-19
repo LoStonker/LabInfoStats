@@ -16,6 +16,147 @@ from scipy.odr import Model, RealData, ODR
 from matplotlib.ticker import AutoMinorLocator
 
 
+import numpy as np
+from scipy.stats import norm, t # Necessario per la funzione
+
+def test_compatibilita(val1, val2, sigma1, sigma2, val1_name="Valore 1", val2_name="Valore 2", use_ttest=False, custom_df=None, significance_level=0.05):
+    """
+    Esegue un test di compatibilità tra due valori con le loro incertezze.
+    """
+    # Inizializzazione di default
+    T_score = np.nan
+    p_value = np.nan
+    compatibili = False # Assumiamo non compatibili fino a prova contraria
+    dist_type = "N/A"
+    df_eff = np.nan # Gradi di libertà effettivi usati
+
+    if sigma1 < 0 or sigma2 < 0:
+        print(f"Errore nel test tra {val1_name} e {val2_name}: Le incertezze (sigma) non possono essere negative.")
+        # T_score, p_value, compatibili rimangono ai loro valori di default (nan, nan, False)
+        return T_score, p_value, compatibili
+        
+    denominatore_T = np.sqrt(sigma1**2 + sigma2**2)
+
+    if denominatore_T < 1e-15: # Denominatore quasi zero
+        if np.abs(val1 - val2) < 1e-15: # Anche differenza quasi zero
+            T_score = 0.0
+            p_value = 1.0
+            compatibili = True
+            dist_type = "N/A (Valori identici con sigma denominatore zero)"
+        else: # Differenza non zero
+            T_score = np.inf
+            p_value = 0.0
+            # compatibili rimane False
+            dist_type = "N/A (Valori diversi con sigma denominatore zero)"
+    else: # Denominatore_T è valido
+        T_score = np.abs(val1 - val2) / denominatore_T
+
+        if use_ttest:
+            if custom_df is not None:
+                df_eff = custom_df
+                if df_eff <= 0:
+                    print(f"Errore nel test tra {val1_name} e {val2_name}: custom_df per t-test ({df_eff}) deve essere > 0.")
+                    # T_score è calcolato, p_value e compatibili rimangono ai default
+                    return T_score, p_value, compatibili 
+            else: # Calcola df approssimato
+                s1_sq = sigma1**2
+                s2_sq = sigma2**2
+                if s1_sq < 1e-15 and s2_sq < 1e-15:
+                    df_eff = np.inf # Se entrambe le sigma sono ~0, la t si approssima alla normale
+                else:
+                    df_num = (s1_sq + s2_sq)**2
+                    df_den = s1_sq**2 + s2_sq**2 
+                    if df_den < 1e-15:
+                        print(f"Attenzione nel test tra {val1_name} e {val2_name}: Denominatore per df è zero. Si userà df=infinito.")
+                        df_eff = np.inf
+                    else:
+                        df_eff = df_num / df_den
+            
+            # Calcolo p_value per t-test
+            if np.isinf(df_eff):
+                p_value = 2 * (1 - norm.cdf(T_score))
+                dist_type = f"t di Student (df=infinito, equivale a Normale)"
+            elif df_eff < 1:
+                print(f"Attenzione nel test tra {val1_name} e {val2_name}: df calcolato ({df_eff:.2f}) < 1. Il p-value del t-test potrebbe non essere affidabile.")
+                p_value = np.nan # Non calcoliamo p_value per df < 1 in questo esempio
+                dist_type = f"t di Student (df={df_eff:.2f} - problematico)"
+            else:
+                p_value = 2 * (1 - t.cdf(T_score, df_eff))
+                dist_type = f"t di Student (df={df_eff:.2f})"
+        
+        else: # Usa la distribuzione Normale standard (use_ttest = False)
+            df_eff = np.inf # Gradi di libertà per la normale
+            p_value = 2 * (1 - norm.cdf(T_score))
+            dist_type = "Normale Standard"
+
+        # Determina compatibilità basata sul p_value calcolato (se non è NaN)
+        if not np.isnan(p_value):
+            compatibili = p_value > significance_level
+        # Se p_value è NaN, compatibili rimane False (dall'inizializzazione)
+
+    # Stampa finale dei risultati
+    print(f"\nTest di compatibilità tra {val1_name} ({val1:.3e} ± {sigma1:.2e}) e {val2_name} ({val2:.3e} ± {sigma2:.2e}):")
+    if not np.isnan(T_score):
+        print(f"  Differenza: {np.abs(val1 - val2):.2e}")
+        print(f"  Incertezza sulla differenza (denominatore di T): {denominatore_T:.2e}" if denominatore_T >= 1e-15 else "N/A (denominatore T zero)")
+        print(f"  Statistica del test (T o Z): {T_score:.2f}")
+    else: # T_score potrebbe essere NaN se si esce prima
+         print("  Statistica del test non calcolata a causa di errore precedente.")
+
+    print(f"  Distribuzione usata: {dist_type}")
+    # print(f"  Gradi di libertà effettivi (df): {df_eff if not np.isnan(df_eff) else 'N/A'}") # Opzionale
+    
+    if not np.isnan(p_value):
+        print(f"  P-value (due code): {p_value:.4f}")
+        if compatibili:
+            print(f"  I due valori sono COMPATIBILI (p > {significance_level}).")
+        else:
+            print(f"  I due valori NON sono compatibili (p <= {significance_level}).")
+    else:
+        print(f"  P-value non calcolato (probabilmente a causa di df < 1 o altri errori).")
+        print(f"  Impossibile determinare la compatibilità.")
+        
+    return T_score, p_value, compatibili
+
+# --- ESEMPIO DI UTILIZZO ---
+if __name__ == '__main__':
+    print("--- Esempio 1: Valori compatibili (Normale) ---")
+    test_compatibilita(10.0, 10.8, 0.5, 0.4, "Val A1", "Val B1")
+
+    print("\n--- Esempio 2: Valori non compatibili (Normale) ---")
+    test_compatibilita(10.0, 10.8, 0.1, 0.1, "Val A2", "Val B2")
+
+    print("\n--- Esempio 3: Valori compatibili (t-test, df approssimato) ---")
+    test_compatibilita(10.0, 10.8, 0.5, 0.4, "Val A1", "Val B1", use_ttest=True)
+
+    print("\n--- Esempio 4: Valori compatibili (t-test, df custom alto) ---")
+    test_compatibilita(10.0, 10.8, 0.5, 0.4, "Val A1", "Val B1", use_ttest=True, custom_df=100)
+
+    print("\n--- Esempio 5: Valori identici, sigma zero ---")
+    test_compatibilita(10.0, 10.0, 0.0, 0.0, "Val C1", "Val C2")
+
+    print("\n--- Esempio 6: Valori diversi, sigma zero ---")
+    test_compatibilita(10.0, 10.1, 0.0, 0.0, "Val D1", "Val D2")
+    
+    print("\n--- Esempio 7: Una sigma zero (t-test forzato) ---")
+    test_compatibilita(10.0, 10.1, 0.5, 0.0, "Val E1", "Val E2", use_ttest=True) # df sarà inf
+
+    print("\n--- Esempio 8: custom_df non valido ---")
+    test_compatibilita(10.0, 10.8, 0.5, 0.4, "Val A1", "Val B1", use_ttest=True, custom_df=0)
+
+    print("\n--- Esempio 9: df calcolato < 1 (molto diverse sigma) ---")
+    # df_num = (0.01^2 + 1^2)^2 ~ 1
+    # df_den = (0.01^4 + 1^4) ~ 1
+    # df ~ 1
+    # Proviamo sigma molto diverse per vedere se df_num/df_den diventa < 1
+    # (sigma1^2+sigma2^2)^2 / (sigma1^4+sigma2^4)
+    # Se sigma1 -> 0, df -> sigma2^4 / sigma2^4 = 1
+    # Questa formula per df non scenderà facilmente sotto 1 se almeno una sigma è non nulla.
+    # Ma se forzassimo df<1 con custom_df:
+    test_compatibilita(10.0, 10.1, 0.5, 0.4, "Val G1", "Val G2", use_ttest=True, custom_df=0.5)
+
+
+
 """ Funzione unica per fare i fit 
 ESEMPIO DI UTILIZZO
     def exp_model(x, A, B):
@@ -537,7 +678,7 @@ def Tstudent2(x, y, sigma_x, sigma_y, x_name="x", y_name="y"):
 
 
 """Seconda funzione per il T-test, questa utilizza array, ha come ingresso array"""
-def Tstudent(val1, val2, sigma1, sigma2, val1_name="Valore 1", val2_name="Valore 2", use_ttest=False, custom_df=None, significance_level=0.05):
+def Tstudent3(val1, val2, sigma1, sigma2, val1_name="Valore 1", val2_name="Valore 2", use_ttest=False, custom_df=None, significance_level=0.05):
     """
     Esegue un test di compatibilità tra due valori con le loro incertezze.
     Confronta la differenza con l'incertezza combinata.
