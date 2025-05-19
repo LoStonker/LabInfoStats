@@ -524,7 +524,7 @@ class FitBomberone:
 
 """Funzione per fare il test di Student, in xname basta mettere il nome che voglio printi"""
 
-def Tstudent(x, y, sigma_x, sigma_y, x_name="x", y_name="y"):
+def Tstudent2(x, y, sigma_x, sigma_y, x_name="x", y_name="y"):
     T = np.abs((x - y) / np.sqrt(sigma_x**2 + sigma_y**2))
     df = (sigma_x**2 + sigma_y**2)**2 / ((sigma_x**4) + (sigma_y**4))
     p_value = 2 * (1 - t.cdf(T, df))
@@ -537,7 +537,7 @@ def Tstudent(x, y, sigma_x, sigma_y, x_name="x", y_name="y"):
 
 
 """Seconda funzione per il T-test, questa utilizza array, ha come ingresso array"""
-def test_compatibilita(val1, val2, sigma1, sigma2, val1_name="Valore 1", val2_name="Valore 2", use_ttest=False, custom_df=None, significance_level=0.05):
+def Tstudent(val1, val2, sigma1, sigma2, val1_name="Valore 1", val2_name="Valore 2", use_ttest=False, custom_df=None, significance_level=0.05):
     """
     Esegue un test di compatibilità tra due valori con le loro incertezze.
     Confronta la differenza con l'incertezza combinata.
