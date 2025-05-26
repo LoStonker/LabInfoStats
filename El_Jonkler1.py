@@ -967,7 +967,7 @@ class FitBomberone2:
         
         try:
              y_fit_curve = self.model(x_fit_plot, *fitted_p_values)
-             ax.plot(x_fit_plot, y_fit_curve, color='crimson', label=f'Fit ({self.fit_method})', linewidth=1.5, zorder: 5)
+             ax.plot(x_fit_plot, y_fit_curve, color='crimson', label=f'Fit ({self.fit_method})', linewidth=1.5, zorder= 5)
 
              if plot_confidence_band:
                 y_model_band, dy_band = self.calculate_confidence_band(x_fit_plot, num_sigma=confidence_sigma_level)
