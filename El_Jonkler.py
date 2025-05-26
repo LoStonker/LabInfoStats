@@ -663,6 +663,361 @@ class FitBomberone:
 
 
 
+
+class FitBomberone2:
+    """
+    Classe unificata per eseguire fit di dati con diversi metodi.
+    ... (il resto della documentazione e __init__ come prima) ...
+    """
+    def __init__(self, model_func, data_arrays, initial_params,
+                 fit_method='LeastSquares', xlabel="x", ylabel="y", title="Risultati del fit"):
+        # --- Validazione Input Iniziale ---
+        valid_methods = ['LeastSquares', 'Chi2', 'Scipy', 'ODR'] # ODR non è completamente implementato qui
+        if fit_method not in valid_methods and fit_method != 'ODR_External': # ODR_External per quando usi la classe FitODR
+            raise ValueError(f"Metodo di fit '{fit_method}' non valido. Scegliere tra: {valid_methods}")
+
+        if not callable(model_func):
+             raise TypeError("model_func deve essere una funzione eseguibile.")
+        if not isinstance(data_arrays, dict):
+             raise TypeError("data_arrays deve essere un dizionario.")
+        if not isinstance(initial_params, dict):
+             raise TypeError("initial_params deve essere un dizionario.")
+
+        # --- Memorizzazione Attributi ---
+        self.model = model_func
+        self.fit_method = fit_method
+        self.xlabel = xlabel
+        self.ylabel = ylabel
+        self.title = title
+
+        # --- Estrazione Dati ---
+        self.x = np.asarray(data_arrays['x'])
+        self.y = np.asarray(data_arrays['y'])
+        self.sigma_y = np.asarray(data_arrays.get('sigma_y', np.ones_like(self.y)))
+        self.sigma_x = data_arrays.get('sigma_x', None) # Rilevante per ODR
+
+        # --- Estrazione Parametri ---
+        sig = inspect.signature(model_func)
+        all_param_names = list(sig.parameters.keys())
+        if not all_param_names:
+             raise ValueError("La funzione modello non sembra accettare argomenti.")
+        self.param_names = all_param_names[1:] # Assume il primo sia x
+        if not self.param_names:
+             raise ValueError("La funzione modello deve accettare almeno un parametro oltre a x.")
+
+        self.initial_params = initial_params
+
+        # --- Inizializzazione Risultati ---
+        self.fit_result = None
+        self.m = None
+        self.popt = None
+        self.pcov = None
+        self.chi2_val = None
+        self.dof = None
+        self.p_value = None
+        self.is_fit_valid = False
+
+        self._validate_inputs()
+
+    def _validate_inputs(self):
+        if not (len(self.x) == len(self.y) == len(self.sigma_y)):
+            raise ValueError("Gli array x, y e sigma_y devono avere la stessa lunghezza.")
+        if self.sigma_x is not None and len(self.x) != len(self.sigma_x):
+             raise ValueError("Gli array x e sigma_x devono avere la stessa lunghezza.")
+        if np.any(self.sigma_y <= 0):
+            print("Attenzione: sigma_y contiene valori <= 0.")
+        missing_params = set(self.param_names) - set(self.initial_params.keys())
+        extra_params = set(self.initial_params.keys()) - set(self.param_names)
+        if missing_params: raise ValueError(f"Parametri iniziali mancanti: {missing_params}")
+        if extra_params: raise ValueError(f"Parametri iniziali extra: {extra_params}")
+
+    def _chi2_func_wrapper(self, *args):
+        params_dict = {name: val for name, val in zip(self.param_names, args)}
+        y_model = self.model(self.x, **params_dict)
+        valid_sigma = self.sigma_y > 0
+        residuals = np.zeros_like(self.y)
+        residuals[valid_sigma] = (self.y[valid_sigma] - y_model[valid_sigma]) / self.sigma_y[valid_sigma]
+        return np.sum(residuals**2)
+
+    def _fit_least_squares(self):
+        try:
+             least_squares_cost = LeastSquares(self.x, self.y, self.sigma_y, self.model)
+             self.m = Minuit(least_squares_cost, **self.initial_params)
+             self.m.migrad()
+             self.m.hesse()
+             self.is_fit_valid = self.m.valid
+             if not self.is_fit_valid: print("Attenzione: Covarianza (LeastSquares) non valida.")
+             self.fit_result = {name: (self.m.values[name], self.m.errors[name]) for name in self.param_names}
+             self.pcov = self.m.covariance # Salva la matrice di covarianza da Minuit
+             self.chi2_val = self.m.fval
+             self.dof = self.m.ndof
+             self.p_value = chi2.sf(self.m.fval, self.m.ndof)
+        except Exception as e:
+             print(f"Errore Fit LeastSquares: {e}")
+             self._handle_fit_failure()
+
+    def _fit_chi2(self):
+        try:
+            initial_values_list = [self.initial_params[name] for name in self.param_names]
+            self.m = Minuit(self._chi2_func_wrapper, *initial_values_list, name=self.param_names)
+            self.m.errordef = Minuit.LEAST_SQUARES
+            self.m.migrad()
+            self.m.hesse()
+            self.is_fit_valid = self.m.valid
+            if not self.is_fit_valid: print("Attenzione: Covarianza (Chi2) non valida.")
+            self.fit_result = {name: (self.m.values[name], self.m.errors[name]) for name in self.param_names}
+            self.pcov = self.m.covariance # Salva la matrice di covarianza da Minuit
+            self.chi2_val = self.m.fval
+            self.dof = len(self.x) - len(self.param_names)
+            self.p_value = chi2.sf(self.m.fval, self.dof) if self.dof > 0 else 0
+        except Exception as e:
+            print(f"Errore Fit Chi2: {e}")
+            self._handle_fit_failure()
+
+    def _fit_scipy(self):
+        try:
+            initial_params_list = [self.initial_params[name] for name in self.param_names]
+            self.popt, self.pcov = curve_fit(
+                self.model, self.x, self.y, p0=initial_params_list,
+                sigma=self.sigma_y, absolute_sigma=True
+            )
+            errors = np.sqrt(np.diag(self.pcov))
+            self.fit_result = {name: (val, err) for name, val, err in zip(self.param_names, self.popt, errors)}
+            residuals = self.y - self.model(self.x, *self.popt)
+            valid_sigma = self.sigma_y > 0
+            chisq_terms = np.zeros_like(self.y)
+            chisq_terms[valid_sigma] = (residuals[valid_sigma] / self.sigma_y[valid_sigma])**2
+            self.chi2_val = np.sum(chisq_terms)
+            self.dof = len(self.x) - len(self.popt)
+            self.p_value = chi2.sf(self.chi2_val, self.dof) if self.dof > 0 else 0
+            self.is_fit_valid = True
+        except RuntimeError as e:
+             print(f"Errore Fit Scipy: {e}. No convergenza.")
+             self._handle_fit_failure(is_scipy=True)
+        except Exception as e:
+             print(f"Errore imprevisto Fit Scipy: {e}")
+             self._handle_fit_failure(is_scipy=True)
+
+    def _handle_fit_failure(self, is_scipy=False):
+        self.is_fit_valid = False
+        self.fit_result = {name: (self.initial_params[name], np.nan) for name in self.param_names}
+        if is_scipy:
+            self.popt = [self.initial_params[name] for name in self.param_names]
+            self.pcov = np.full((len(self.param_names), len(self.param_names)), np.nan)
+        self.chi2_val, self.dof, self.p_value = np.nan, len(self.x) - len(self.param_names), np.nan
+
+
+    def perform_fit(self):
+        print(f"--- Esecuzione Fit con Metodo: {self.fit_method} ---")
+        if self.fit_method == 'LeastSquares': self._fit_least_squares()
+        elif self.fit_method == 'Chi2': self._fit_chi2()
+        elif self.fit_method == 'Scipy': self._fit_scipy()
+        else: raise ValueError(f"Metodo '{self.fit_method}' non riconosciuto per il fit interno.")
+        if self.fit_result is None: print("Errore: Fit non ha prodotto risultati.")
+        elif not self.is_fit_valid: print("Avviso: Fit potrebbe non essere valido.")
+        else: print("Fit completato.")
+        return self
+
+    def print_results(self):
+        if self.fit_result is None:
+            print("Nessun risultato del fit. Eseguire perform_fit().")
+            return
+        print(f"\n--- Risultati del Fit ({self.fit_method}) ---")
+        print(f"Fit Valido: {'Sì' if self.is_fit_valid else 'No'}")
+        print("\nParametri Ottimizzati:")
+        for name in self.param_names:
+            val, err = self.fit_result.get(name, (np.nan, np.nan))
+            print(f"  {name} = {val:.4g} ± {err:.2g}")
+        if not np.isnan(self.chi2_val) and self.dof is not None and self.dof > 0:
+            chi2_rid = self.chi2_val / self.dof
+            print(f"\nStatistiche del Fit:")
+            print(f"  Chi-quadro (χ²): {self.chi2_val:.4f}")
+            print(f"  Gradi di libertà (DoF): {self.dof}")
+            print(f"  Chi-quadro Ridotto (χ²/DoF): {chi2_rid:.4f}")
+            if not np.isnan(self.p_value): print(f"  p-value: {self.p_value:.4f}")
+        elif not np.isnan(self.chi2_val):
+             print(f"\n  Chi-quadro (χ²): {self.chi2_val:.4f} (DoF={self.dof})")
+        return self
+
+    def _get_info_box_coords(self, position='upper left', pad=0.05):
+        # ... (come prima) ...
+        positions = {
+            'upper left':   {'xy': (pad, 1 - pad), 'ha': 'left', 'va': 'top'},
+            'upper right':  {'xy': (1 - pad, 1 - pad), 'ha': 'right', 'va': 'top'},
+            'lower left':   {'xy': (pad, pad), 'ha': 'left', 'va': 'bottom'},
+            'lower right':  {'xy': (1 - pad, pad), 'ha': 'right', 'va': 'bottom'},
+        }
+        return positions.get(position.lower().replace("_", " "), positions['upper right'])
+
+
+    def calculate_confidence_band(self, x_points, num_sigma=1):
+        """
+        Calcola la banda di confidenza per la funzione modello fittata.
+        Questa funzione deve essere chiamata DOPO perform_fit().
+
+        Args:
+            x_points (array-like): Punti x sui quali calcolare la banda.
+            num_sigma (float): Numero di deviazioni standard per la banda (es. 1 per 68%, 1.96 per 95%).
+
+        Returns:
+            tuple: (y_model_on_x_points, dy_confidence_band)
+                   y_model_on_x_points: Valori del modello fittato sui x_points.
+                   dy_confidence_band: Incertezza (mezza larghezza della banda) per ogni punto.
+                   Restituisce (None, None) se il fit non è valido o la covarianza non è disponibile.
+        """
+        if not self.is_fit_valid or self.fit_result is None:
+            print("Fit non valido o non eseguito. Impossibile calcolare la banda di confidenza.")
+            return None, None
+        if self.pcov is None:
+            print("Matrice di covarianza non disponibile. Impossibile calcolare la banda di confidenza.")
+            return None, None
+        if np.all(np.isnan(self.pcov)):
+            print("Matrice di covarianza contiene NaN. Impossibile calcolare la banda di confidenza.")
+            return None, None
+
+
+        popt_values = np.array([self.fit_result[name][0] for name in self.param_names])
+        y_model_on_x_points = self.model(x_points, *popt_values)
+        dy_confidence_band = np.zeros_like(x_points, dtype=float)
+
+        for i, x_val in enumerate(x_points):
+            # Calcolare il gradiente (derivate parziali) del modello rispetto ai parametri in x_val
+            # Questo è il passaggio più complesso e dipendente dal modello se fatto analiticamente.
+            # Un metodo numerico (differenze finite) potrebbe essere più generale ma meno preciso.
+            
+            # Per il MODELLO DI CAUCHY specifico: y(x, A, B) = A + B/x^2
+            # param_names deve essere ['A', 'B']
+            if list(self.param_names) == ['A', 'B'] and self.model.__name__ == 'cauchy': # Assumendo che il modello sia 'cauchy'
+                grad = np.array([1.0, 1.0 / (x_val**2) if x_val != 0 else float('inf')])
+            else:
+                # Metodo generico con differenze finite per il gradiente (Jacobiano)
+                # Questo è meno accurato e può essere instabile.
+                # Richiede che popt_values sia un array NumPy
+                eps = 1e-8 # Piccolo step
+                grad = np.zeros(len(popt_values))
+                for j in range(len(popt_values)):
+                    p_plus = popt_values.copy()
+                    p_minus = popt_values.copy()
+                    p_plus[j] += eps
+                    p_minus[j] -= eps
+                    grad[j] = (self.model(x_val, *p_plus) - self.model(x_val, *p_minus)) / (2 * eps)
+            
+            # Varianza di y_fit(x_val) = J @ Cov @ J.T
+            # J è il gradiente (array 1D), Cov è self.pcov (matrice 2D)
+            try:
+                var_y = grad.T @ self.pcov @ grad
+                if var_y < 0: # Può accadere se pcov non è definita positiva
+                    # print(f"Attenzione: varianza negativa calcolata ({var_y}) per la banda a x={x_val}. Impostata a 0.")
+                    dy_confidence_band[i] = 0.0
+                else:
+                    dy_confidence_band[i] = num_sigma * np.sqrt(var_y)
+            except Exception as e:
+                print(f"Errore nel calcolo della varianza della banda a x={x_val}: {e}")
+                dy_confidence_band[i] = np.nan # O un altro valore per indicare errore
+
+
+        return y_model_on_x_points, dy_confidence_band
+
+
+    def plot_results(self, title_fontsize=14, label_fontsize=12,
+                     info_box_pos='upper right', log_scale_y=False, log_scale_x=False,
+                     plot_confidence_band=False, confidence_sigma_level=1): # NUOVI ARGOMENTI
+        """
+        Genera un grafico dei dati fittati con la curva di fit e un box informativo.
+        Può opzionalmente includere una banda di confidenza.
+        """
+        if self.fit_result is None:
+            print("Nessun risultato. Eseguire perform_fit().")
+            return
+        
+        plt.style.use('seaborn-v0_8-whitegrid') # Stile pulito
+        plt.figure(figsize=(10, 7))
+        ax = plt.gca()
+
+        # --- Plot Dati ---
+        plot_kwargs = {'fmt': 'o', 'label': 'Dati', 'markersize': 5, 
+                       'capsize': 3, 'elinewidth': 1, 'markeredgecolor': 'k', 'zorder': 10}
+        if self.sigma_x is not None and np.any(self.sigma_x > 1e-9):
+             ax.errorbar(self.x, self.y, xerr=self.sigma_x, yerr=self.sigma_y, **plot_kwargs)
+        else:
+             ax.errorbar(self.x, self.y, yerr=self.sigma_y, **plot_kwargs)
+
+        # --- Plot Curva di Fit e Banda di Confidenza ---
+        if len(self.x) > 1:
+             x_min_data, x_max_data = np.min(self.x), np.max(self.x)
+             range_ext_factor = 0.05
+             
+             if log_scale_x:
+                 if x_min_data <= 0: x_log_min = np.log10(np.min(self.x[self.x > 0]) * (1-range_ext_factor*2)) if np.any(self.x > 0) else -1
+                 else: x_log_min = np.log10(x_min_data * (1-range_ext_factor))
+                 x_log_max = np.log10(x_max_data * (1+range_ext_factor))
+                 x_fit_plot = np.logspace(x_log_min, x_log_max, 400)
+             else:
+                 data_range = x_max_data - x_min_data
+                 if data_range == 0: data_range = 1 # Evita range nullo se tutti i punti x sono uguali
+                 x_fit_plot = np.linspace(x_min_data - data_range*range_ext_factor, 
+                                      x_max_data + data_range*range_ext_factor, 400)
+        elif len(self.x) == 1:
+             x_fit_plot = np.array([self.x[0] * 0.9, self.x[0], self.x[0] * 1.1]) if self.x[0]!=0 else np.array([-0.1, 0, 0.1])
+        else: # No data points
+            x_fit_plot = np.linspace(0,1,100) # Default range se non ci sono dati x
+
+
+        fitted_p_values = np.array([self.fit_result[name][0] for name in self.param_names])
+        
+        try:
+             y_fit_curve = self.model(x_fit_plot, *fitted_p_values)
+             ax.plot(x_fit_plot, y_fit_curve, color='crimson', label=f'Fit ({self.fit_method})', linewidth=1.5, zorder: 5)
+
+             if plot_confidence_band:
+                y_model_band, dy_band = self.calculate_confidence_band(x_fit_plot, num_sigma=confidence_sigma_level)
+                if y_model_band is not None and dy_band is not None:
+                    valid_band_indices = np.isfinite(y_model_band) & np.isfinite(dy_band)
+                    ax.fill_between(x_fit_plot[valid_band_indices],
+                                     (y_model_band - dy_band)[valid_band_indices],
+                                     (y_model_band + dy_band)[valid_band_indices],
+                                     color='salmon', alpha=0.35,
+                                     label=f'Banda conf. ({confidence_sigma_level}σ)')
+        except Exception as e:
+             print(f"Errore calcolo curva/banda di fit: {e}")
+
+        ax.set_xlabel(self.xlabel, fontsize=label_fontsize)
+        ax.set_ylabel(self.ylabel, fontsize=label_fontsize)
+        ax.set_title(self.title, fontsize=title_fontsize, pad=15)
+
+        if log_scale_y: ax.set_yscale('log')
+        if log_scale_x: ax.set_xscale('log')
+
+        ax.grid(True, which='major', linestyle='--', linewidth='0.5', color='grey')
+        ax.grid(True, which='minor', linestyle=':', linewidth='0.3', color='lightgrey')
+        ax.minorticks_on()
+
+        box_text_lines = []
+        for name in self.param_names:
+             val, err = self.fit_result.get(name, (np.nan, np.nan))
+             val_str = f"{val:.3e}" if (abs(val) > 1e4 or (abs(val) < 1e-3 and val !=0)) else f"{val:.4g}"
+             err_str = f"{err:.2e}" if (abs(err) > 1e3 or (abs(err) < 1e-4 and err !=0)) else f"{err:.2g}"
+             box_text_lines.append(f"${name} = {val_str} \\pm {err_str}$")
+
+        if not np.isnan(self.chi2_val) and self.dof is not None and self.dof > 0:
+             box_text_lines.append(f"$\\chi^2/N_{{dof}} = {self.chi2_val / self.dof:.2f}$ ($N_{{dof}}={self.dof}$)")
+             if not np.isnan(self.p_value): box_text_lines.append(f"$p$-value $= {self.p_value:.3f}$")
+        elif not np.isnan(self.chi2_val):
+             box_text_lines.append(f"$\\chi^2 = {self.chi2_val:.2f}$ (DoF={self.dof})")
+        if not self.is_fit_valid: box_text_lines.append("Fit non valido!")
+        
+        info_text = "\n".join(box_text_lines)
+        box_coords = self._get_info_box_coords(info_box_pos)
+        ax.annotate(info_text, xy=box_coords['xy'], xycoords='axes fraction',
+                    va=box_coords['va'], ha=box_coords['ha'], fontsize=9,
+                    bbox=dict(boxstyle='round,pad=0.5', fc='aliceblue', alpha=0.9, ec='grey'))
+
+        ax.legend(fontsize=9, loc='best')
+        plt.tight_layout(rect=[0, 0, 1, 0.96])
+        plt.show()
+
+
+
 """Funzione per fare il test di Student, in xname basta mettere il nome che voglio printi"""
 
 def Tstudent_secondo(x, y, sigma_x, sigma_y, x_name="x", y_name="y"):
