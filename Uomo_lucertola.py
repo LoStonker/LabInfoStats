@@ -501,6 +501,53 @@ class FitBayesiano2:
             print(f"  Chi-quadro Ridotto (χ²/DoF): {chi2_rid:.4f}")
             print(f"  p-value: {self.p_value:.4f}")
 
+	def calculate_confidence_band(self, x_points, num_sigma=1):
+        """
+        Calcola la banda di credibilità (confidenza) usando le catene di Markov (MCMC).
+        Viene valutato il modello su un sottoinsieme della posterior distribution.
+        """
+        if self.trace is None:
+            print("Fit non valido o non eseguito. Impossibile calcolare la banda.")
+            return None, None
+            
+        # 1. Estrazione di tutti i campioni validi (appiattendo le catene)
+        samples = {name: self.trace.posterior[name].values.flatten() for name in self.param_names}
+        n_tot_samples = len(samples[self.param_names[0]])
+        
+        # 2. Per non fondere il PC, prendiamo un campione casuale di 1000 "curve" 
+        # (sono più che sufficienti per un'ottima statistica)
+        max_samples = min(1000, n_tot_samples)
+        idx = np.random.choice(n_tot_samples, max_samples, replace=False)
+        
+        # 3. Calcolo del modello per ognuna delle 1000 combinazioni di parametri
+        y_evals = np.zeros((max_samples, len(x_points)))
+        for i in range(max_samples):
+            # Crea un dizionario con i parametri dell'i-esimo fit
+            p_dict = {name: samples[name][idx[i]] for name in self.param_names}
+            y_evals[i, :] = self.model(x_points, **p_dict)
+            
+        # 4. Calcolo della media e dei percentili (le probabilità esatte)
+        y_model_on_x_points = np.mean(y_evals, axis=0)
+        
+        # Mappiamo i sigma classici nei percentili Bayesiani (Highest Density Interval)
+        if num_sigma == 1:
+            # 68.27% dei dati (1 sigma)
+            lower, upper = np.percentile(y_evals, [15.865, 84.135], axis=0)
+        elif num_sigma == 2:
+            # 95.45% dei dati (2 sigma)
+            lower, upper = np.percentile(y_evals, [2.275, 97.725], axis=0)
+        elif num_sigma == 3:
+            # 99.73% dei dati (3 sigma)
+            lower, upper = np.percentile(y_evals, [0.135, 99.865], axis=0)
+        else:
+            lower, upper = np.percentile(y_evals, [15.865, 84.135], axis=0)
+            
+        # Calcoliamo la semi-larghezza della banda per renderla compatibile col tuo codice
+        dy_confidence_band = (upper - lower) / 2.0
+        
+        return y_model_on_x_points, dy_confidence_band
+
+	
     def _get_info_box_coords(self, position='upper right', pad=0.05):
         positions = {
             'upper left':   {'xy': (pad, 1 - pad), 'ha': 'left', 'va': 'top'},
@@ -513,9 +560,9 @@ class FitBayesiano2:
              return {'xy': tuple(position), 'ha': 'center', 'va': 'center'}
         return positions.get(position.lower().replace("_", " "), positions['upper right'])
 
-    def plot_results(self, title_fontsize=14, label_fontsize=12,
+	def plot_results(self, title_fontsize=14, label_fontsize=12,
                      info_box_pos='upper right', log_scale_y=False, log_scale_x=False,
-                     param_labels=None):
+                     param_labels=None, plot_confidence_band=False, confidence_sigma_level=1): # <-- NUOVI ARGOMENTI
         if self.fit_result is None:
             return print("Nessun risultato. Eseguire perform_fit().")
             
@@ -526,16 +573,15 @@ class FitBayesiano2:
         plt.figure(figsize=(10, 7))
         ax = plt.gca()
 
-        # Dati Sperimentali (Ora disegna anche xerr se presente!)
+        # --- Dati Sperimentali ---
         plot_kwargs = {'fmt': 'o', 'label': 'Dati', 'markersize': 5, 
                        'capsize': 3, 'elinewidth': 1, 'markeredgecolor': 'k', 'zorder': 10}
-        
         if self.has_x_err:
             ax.errorbar(self.x, self.y, xerr=self.sigma_x, yerr=self.sigma, **plot_kwargs)
         else:
             ax.errorbar(self.x, self.y, yerr=self.sigma, **plot_kwargs)
 
-        # Curva di Fit
+        # --- Creazione asse X esteso ---
         if len(self.x) > 1:
              x_min_data, x_max_data = np.min(self.x), np.max(self.x)
              range_ext_factor = 0.05
@@ -554,14 +600,26 @@ class FitBayesiano2:
         else:
              x_fit_plot = np.linspace(0, 1, 100)
 
+        # --- Calcolo Curva e Bande ---
         params_dict = {name: self.fit_result[name][0] for name in self.param_names}
         try:
              y_fit_curve = self.model(x_fit_plot, **params_dict)
              ax.plot(x_fit_plot, y_fit_curve, color='crimson', label='Fit Bayesiano', linewidth=2, zorder=5)
+             
+             # LA MAGIA DELLE BANDE BAYESIANE
+             if plot_confidence_band:
+                 y_model_band, dy_band = self.calculate_confidence_band(x_fit_plot, num_sigma=confidence_sigma_level)
+                 if y_model_band is not None and dy_band is not None:
+                     valid_band_indices = np.isfinite(y_model_band) & np.isfinite(dy_band)
+                     ax.fill_between(x_fit_plot[valid_band_indices],
+                                     (y_model_band - dy_band)[valid_band_indices],
+                                     (y_model_band + dy_band)[valid_band_indices],
+                                     color='salmon', alpha=0.35, zorder=3,
+                                     label=f'Banda Cred. ({confidence_sigma_level}σ)')
         except Exception as e:
-             print(f"Errore calcolo curva di fit: {e}")
+             print(f"Errore calcolo curva/banda di fit: {e}")
 
-        # Assi
+        # --- Assi e Griglia ---
         ax.set_xlabel(self.xlabel, fontsize=label_fontsize)
         ax.set_ylabel(self.ylabel, fontsize=label_fontsize)
         ax.set_title(self.title, fontsize=title_fontsize, pad=15)
@@ -580,7 +638,6 @@ class FitBayesiano2:
              val, err = self.fit_result.get(name, (np.nan, np.nan))
              val_str = f"{val:.3e}" if (abs(val) > 1e4 or (abs(val) < 1e-3 and val !=0)) else f"{val:.4g}"
              err_str = f"{err:.2e}" if (abs(err) > 1e3 or (abs(err) < 1e-4 and err !=0)) else f"{err:.2g}"
-             
              display_name = param_labels.get(name, name)
              box_text_lines.append(f"${display_name} = {val_str} \\pm {err_str}$")
              
@@ -596,18 +653,12 @@ class FitBayesiano2:
         box_coords = self._get_info_box_coords(info_box_pos)
         ax.annotate(info_text, xy=box_coords['xy'], xycoords='axes fraction',
                     va=box_coords['va'], ha=box_coords['ha'], fontsize=11,
-                    bbox=dict(boxstyle='round,pad=0.5', fc='aliceblue', alpha=0.9, ec='grey'))
+                    bbox=dict(boxstyle='round,pad=0.5', fc='aliceblue', alpha=0.9, ec='grey'),
+                    zorder=10)
 
         ax.legend(fontsize=10, loc='best')
         plt.tight_layout(rect=[0, 0, 1, 0.96])
         plt.show()
-        
-    def plot_diagnostics(self):
-        if self.trace is not None:
-            # Mostra i plot solo per i parametri fisici, ignorando i parametri "x_vero" del modello ODR
-            az.plot_posterior(self.trace, var_names=self.param_names)
-            plt.show()
-
 
 
 
