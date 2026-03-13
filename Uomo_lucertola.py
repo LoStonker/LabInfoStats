@@ -1508,7 +1508,7 @@ def bootstrap(y_true, residui):
 
 
 
-ef verifica_montecarlo(modello, x, sigma_x, sigma_y, N, true_params, fit_method, noise_generator=None, initial_params= None, initial_params_generator= None, silent=True, **kwargs):
+def verifica_montecarlo(modello, x, sigma_x, sigma_y, N, true_params, fit_method, noise_generator=None, initial_params= None, initial_params_generator= None, silent=True, **kwargs):
     if noise_generator is None:
         def default_noise(x_atteso, y_atteso, sig_x, sig_y):
             # Spalma la y
