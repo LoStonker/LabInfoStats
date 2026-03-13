@@ -501,53 +501,37 @@ class FitBayesiano2:
             print(f"  Chi-quadro Ridotto (χ²/DoF): {chi2_rid:.4f}")
             print(f"  p-value: {self.p_value:.4f}")
 
-	def calculate_confidence_band(self, x_points, num_sigma=1):
-        """
-        Calcola la banda di credibilità (confidenza) usando le catene di Markov (MCMC).
-        Viene valutato il modello su un sottoinsieme della posterior distribution.
-        """
+    def calculate_confidence_band(self, x_points, num_sigma=1):
         if self.trace is None:
             print("Fit non valido o non eseguito. Impossibile calcolare la banda.")
             return None, None
             
-        # 1. Estrazione di tutti i campioni validi (appiattendo le catene)
         samples = {name: self.trace.posterior[name].values.flatten() for name in self.param_names}
         n_tot_samples = len(samples[self.param_names[0]])
         
-        # 2. Per non fondere il PC, prendiamo un campione casuale di 1000 "curve" 
-        # (sono più che sufficienti per un'ottima statistica)
         max_samples = min(1000, n_tot_samples)
         idx = np.random.choice(n_tot_samples, max_samples, replace=False)
         
-        # 3. Calcolo del modello per ognuna delle 1000 combinazioni di parametri
         y_evals = np.zeros((max_samples, len(x_points)))
         for i in range(max_samples):
-            # Crea un dizionario con i parametri dell'i-esimo fit
             p_dict = {name: samples[name][idx[i]] for name in self.param_names}
             y_evals[i, :] = self.model(x_points, **p_dict)
             
-        # 4. Calcolo della media e dei percentili (le probabilità esatte)
         y_model_on_x_points = np.mean(y_evals, axis=0)
         
-        # Mappiamo i sigma classici nei percentili Bayesiani (Highest Density Interval)
         if num_sigma == 1:
-            # 68.27% dei dati (1 sigma)
             lower, upper = np.percentile(y_evals, [15.865, 84.135], axis=0)
         elif num_sigma == 2:
-            # 95.45% dei dati (2 sigma)
             lower, upper = np.percentile(y_evals, [2.275, 97.725], axis=0)
         elif num_sigma == 3:
-            # 99.73% dei dati (3 sigma)
             lower, upper = np.percentile(y_evals, [0.135, 99.865], axis=0)
         else:
             lower, upper = np.percentile(y_evals, [15.865, 84.135], axis=0)
             
-        # Calcoliamo la semi-larghezza della banda per renderla compatibile col tuo codice
         dy_confidence_band = (upper - lower) / 2.0
         
         return y_model_on_x_points, dy_confidence_band
 
-	
     def _get_info_box_coords(self, position='upper right', pad=0.05):
         positions = {
             'upper left':   {'xy': (pad, 1 - pad), 'ha': 'left', 'va': 'top'},
@@ -560,9 +544,9 @@ class FitBayesiano2:
              return {'xy': tuple(position), 'ha': 'center', 'va': 'center'}
         return positions.get(position.lower().replace("_", " "), positions['upper right'])
 
-	def plot_results(self, title_fontsize=14, label_fontsize=12,
+    def plot_results(self, title_fontsize=14, label_fontsize=12,
                      info_box_pos='upper right', log_scale_y=False, log_scale_x=False,
-                     param_labels=None, plot_confidence_band=False, confidence_sigma_level=1): # <-- NUOVI ARGOMENTI
+                     param_labels=None, plot_confidence_band=False, confidence_sigma_level=1):
         if self.fit_result is None:
             return print("Nessun risultato. Eseguire perform_fit().")
             
@@ -606,7 +590,6 @@ class FitBayesiano2:
              y_fit_curve = self.model(x_fit_plot, **params_dict)
              ax.plot(x_fit_plot, y_fit_curve, color='crimson', label='Fit Bayesiano', linewidth=2, zorder=5)
              
-             # LA MAGIA DELLE BANDE BAYESIANE
              if plot_confidence_band:
                  y_model_band, dy_band = self.calculate_confidence_band(x_fit_plot, num_sigma=confidence_sigma_level)
                  if y_model_band is not None and dy_band is not None:
