@@ -157,7 +157,6 @@ if __name__ == '__main__':
     test_compatibilita(10.0, 10.1, 0.5, 0.4, "Val G1", "Val G2", use_ttest=True, custom_df=0.5)
 
 
-
 """ Funzione unica per fare i fit 
 ESEMPIO DI UTILIZZO
     def exp_model(x, A, B):
@@ -1486,6 +1485,310 @@ class FitBomberone2:
         ax.legend(fontsize=9, loc='best')
         plt.tight_layout(rect=[0, 0, 1, 0.96])
         plt.show()
+
+
+
+
+def noise_generator_uniform(x_true, y_true, sigma_x, sigma_y):
+    y = sigma_y * np.sqrt(3)
+    noise_y = np.random.uniform(-y, y, size=len(y_true))
+    y_noise = y + noise_y
+
+    x = sigma_x * np.sqrt(3)
+    noise_x = np.random.uniform(-x, x, size=len(x_true))
+    x_noise = x + noise_x
+
+    return x_noise, y_noise
+
+#Se invece i miei dati non seguono una distribuzione precisa posso usare questo tipo di funzione
+def bootstrap(y_true, residui):
+    indices = np.random.randint(0, len(residui), size=len(y_true))
+    noise = residui[indices]
+    return y_true + noise
+
+
+
+ef verifica_montecarlo(modello, x, sigma_x, sigma_y, N, true_params, fit_method, noise_generator=None, initial_params= None, initial_params_generator= None, silent=True, **kwargs):
+    if noise_generator is None:
+        def default_noise(x_atteso, y_atteso, sig_x, sig_y):
+            # Spalma la y
+            y_rand = y_atteso + np.random.normal(0, sig_y, size=len(y_atteso))
+            # Spalma la x (Necessario solo se passi una sigma_x non nulla, es. per ODR)
+            if sig_x is not None and np.any(sig_x > 0):
+                x_rand = x_atteso + np.random.normal(0, sig_x, size=len(x_atteso))
+            else:
+                x_rand = x_atteso
+            return x_rand, y_rand
+        noise_generator = default_noise
+    
+
+    param_names = list(true_params.keys())
+    params_values = {name: [] for name in param_names}
+    params_errors = {name: [] for name in param_names}
+    chi2_list = []
+    ndof = len(x) - len(true_params)
+    
+    y_expected = modello(x, **true_params)  
+
+    if silent:
+        old_stdout = sys.stdout
+        sys.stdout = open(os.devnull, 'w')
+    try:
+        for i in range(N):
+            x_random, y_random = noise_generator(x, y_expected, sigma_x, sigma_y)
+
+            data_toy = {'x': x_random, 'y': y_random, 'sigma_y': sigma_y, 'sigma_x': sigma_x}
+            if initial_params_generator is not None:
+                init = initial_params_generator(i)
+            elif initial_params is not None:
+                init = initial_params
+            else:
+                init = true_params
+
+            fit_toy = lib.FitBomberone2(model_func=modello, data_arrays=data_toy, initial_params=init, fit_method=fit_method,   
+                                        xlabel='SIUM', ylabel='Uomo Falena', title=f'Toy #{i+1}')
+            fit_toy.perform_fit()
+
+            if fit_toy.is_fit_valid:
+                for name in param_names:
+                    val, err = fit_toy.fit_result[name]
+                    params_values[name].append(val)
+                    params_errors[name].append(err)
+                chi2_list.append(fit_toy.chi2_val)
+            else:
+                continue
+    finally:
+        # Ripristina l'output della console anche se il ciclo si interrompe per un errore
+        if silent:
+            sys.stdout.close()
+            sys.stdout = old_stdout
+    
+    chi2_array = np.array(chi2_list) if chi2_list else np.array([])
+
+    return {
+        'params_values': params_values,
+        'params_errors': params_errors,
+        'chi2': chi2_array,
+        'true_params': true_params,
+        'ndof': ndof,
+        'n_successi': len(chi2_list)
+    }
+
+
+
+
+def plot_montecarlo_results(mc_results):
+    """
+    Stampa i grafici diagnostici (Pulls e Chi2) partendo dall'output di verifica_montecarlo
+    """
+    true_params = mc_results['true_params']
+    param_names = list(true_params.keys())
+    
+    print(f"Toy MC completati con successo: {mc_results['n_successi']}")
+    if mc_results['n_successi'] == 0:
+        return
+        
+    for name in param_names:
+        # 1. FORZIAMO A NUMPY ARRAY QUI
+        vals = np.array(mc_results['params_values'][name])
+        mean_val = np.mean(vals)
+        std_val = np.std(vals)
+        print(f"Parametro {name}: Vero = {true_params[name]} | Media Toy = {mean_val:.4g} ± {std_val:.4g}")
+
+    n_params = len(param_names)
+    fig, axes = plt.subplots(1, n_params + 1, figsize=(5 * (n_params + 1), 4))
+    plt.style.use('seaborn-v0_8-whitegrid')
+    
+    # Plot dei Pulls per ogni parametro
+    for i, name in enumerate(param_names):
+        # 2. FORZIAMO A NUMPY ARRAY ANCHE QUI
+        vals = np.array(mc_results['params_values'][name])
+        errs = np.array(mc_results['params_errors'][name])
+        true_val = true_params[name]
+        
+        # Calcolo dei Pulls (Ora funzionerà perfettamente!)
+        pulls = (vals - true_val) / errs
+        
+        ax = axes[i]
+        ax.hist(pulls, bins=30, color='skyblue', edgecolor='black', density=True)
+        ax.set_title(f'Pull Distribution: {name}\n$\mu={np.mean(pulls):.2f}, \sigma={np.std(pulls):.2f}$')
+        ax.set_xlabel('Zio pera')
+        
+        # Disegna la gaussiana attesa N(0,1)
+        x_g = np.linspace(-4, 4, 100)
+        ax.plot(x_g, sc.norm.pdf(x_g, 0, 1), 'r--', label='Atteso N(0,1)')
+        ax.legend()
+
+    # Plot del Chi-Quadro
+    ax_chi = axes[-1]
+    
+    # 3. FORZIAMO A NUMPY ARRAY PER IL CHI2
+    chi2_vals = np.array(mc_results['chi2'])
+    ndof = mc_results['ndof']
+    
+    ax_chi.hist(chi2_vals, bins=30, color='lightgreen', edgecolor='black', density=True)
+    ax_chi.set_title(f'$\chi^2$ Distribution (ndof={ndof})\nMedia={np.mean(chi2_vals):.2f}')
+    ax_chi.set_xlabel('$\chi^2$')
+    
+    # Disegna la distribuzione chi2 teorica
+    x_chi = np.linspace(max(0, np.min(chi2_vals)-5), np.max(chi2_vals)+5, 100)
+    ax_chi.plot(x_chi, sc.chi2.pdf(x_chi, ndof), 'r--', label='Teorico')
+    ax_chi.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+
+
+def validate_toy_montecarlo(mc_results, alpha=0.05):
+    """
+    Esegue test quantitativi sui risultati di toy Monte Carlo su tutti i parametri.
+    Accetta direttamente in input il dizionario generato da 'verifica_montecarlo'.
+    """
+    true_params = mc_results['true_params']
+    
+    # FORZIAMO IL CHI2 A DIVENTARE UN ARRAY NUMPY
+    chi2_array = np.array(mc_results['chi2']) 
+    
+    ndof = mc_results['ndof']
+    n_toys = mc_results['n_successi']
+    
+    if n_toys == 0:
+        return {"error": "Nessun toy MC completato con successo."}
+
+    results = {'parameters': {}, 'goodness_of_fit': {}}
+
+    # 1. ANALISI PARAMETRI E PULL (Per ogni parametro)
+    for name, p_true in true_params.items():
+        
+        # ECCO LA MAGIA: FORZIAMO I PARAMETRI A DIVENTARE ARRAY NUMPY
+        p_fit_array = np.array(mc_results['params_values'][name])
+        p_err_array = np.array(mc_results['params_errors'][name])
+        
+        param_res = {}
+
+        # Test Bias (Media parametri)
+        mean_p = np.mean(p_fit_array)
+        std_p = np.std(p_fit_array, ddof=1)
+        std_err_mean = std_p / np.sqrt(n_toys)
+        t_stat_mean = (mean_p - p_true) / std_err_mean if std_err_mean > 0 else 0
+        p_value_mean = 2 * (1 - stats.t.cdf(np.abs(t_stat_mean), df=n_toys-1))
+        
+        param_res['mean_test'] = {
+            'desc': "Bias Media (Atteso: True Value)",
+            'val': mean_p, 'err': std_err_mean, 'p_value': p_value_mean, 'reject_H0': p_value_mean < alpha
+        }
+
+        # Analisi Pull (Ora la sottrazione funzionerà perfettamente!)
+        pull = (p_fit_array - p_true) / p_err_array
+        mean_pull = np.mean(pull)
+        std_pull = np.std(pull, ddof=1)
+        
+        # Media Pull
+        t_pull = mean_pull / (std_pull / np.sqrt(n_toys))
+        p_value_mean_pull = 2 * (1 - stats.t.cdf(np.abs(t_pull), df=n_toys-1))
+        param_res['pull_mean'] = {
+            'desc': "Media Pull (Atteso: 0)",
+            'val': mean_pull, 'err': std_pull / np.sqrt(n_toys), 'p_value': p_value_mean_pull, 'reject_H0': p_value_mean_pull < alpha
+        }
+
+        # Varianza Pull
+        var_pull = std_pull**2
+        chi2_var = (n_toys - 1) * var_pull
+        p_value_var = 2 * min(stats.chi2.cdf(chi2_var, df=n_toys-1), 1 - stats.chi2.cdf(chi2_var, df=n_toys-1))
+        param_res['pull_variance'] = {
+            'desc': "Varianza Pull (Attesa: 1)",
+            'val': var_pull, 'p_value': p_value_var, 'reject_H0': p_value_var < alpha
+        }
+
+        # Normalità Pull
+        if n_toys <= 5000:
+            stat, p_norm = stats.shapiro(pull)
+            test_name = "Shapiro-Wilk"
+        else:
+            stat, p_norm = stats.kstest(pull, 'norm')
+            test_name = "Kolmogorov-Smirnov"
+            
+        param_res['pull_normality'] = {
+            'desc': f"Normalità Pull ({test_name})",
+            'stat': stat, 'p_value': p_norm, 'reject_H0': p_norm < alpha
+        }
+
+        # Copertura (Coverage)
+        inside = (p_fit_array - p_err_array <= p_true) & (p_true <= p_fit_array + p_err_array)
+        coverage_1sigma = np.mean(inside)
+        p_val_cov = 2 * min(stats.binom.cdf(int(coverage_1sigma * n_toys), n_toys, 0.6827),
+                            1 - stats.binom.cdf(int(coverage_1sigma * n_toys) - 1, n_toys, 0.6827))
+        param_res['coverage_1sigma'] = {
+            'desc': "Copertura 1σ (Attesa: ~68.3%)",
+            'val': coverage_1sigma * 100, 'p_value': p_val_cov, 'reject_H0': p_val_cov < alpha
+        }
+
+        results['parameters'][name] = param_res
+
+    # 2. ANALISI DEL CHI-QUADRO (Globale)
+    mean_chi2 = np.mean(chi2_array)
+    z_chi2 = (mean_chi2 - ndof) / np.sqrt(2 * ndof / n_toys)
+    p_value_chi2_mean = 2 * (1 - stats.norm.cdf(np.abs(z_chi2)))
+    
+    results['goodness_of_fit']['chi2_mean'] = {
+        'desc': f"Media χ² (Attesa: {ndof})",
+        'val': mean_chi2, 'p_value': p_value_chi2_mean, 'reject_H0': p_value_chi2_mean < alpha
+    }
+
+    ks_chi2_stat, ks_chi2_p = stats.kstest(chi2_array, 'chi2', args=(ndof,))
+    results['goodness_of_fit']['chi2_dist'] = {
+        'desc': "Distribuzione χ² (KS test)",
+        'stat': ks_chi2_stat, 'p_value': ks_chi2_p, 'reject_H0': ks_chi2_p < alpha
+    }
+
+    return results
+
+
+
+
+def print_validation_report(val_results):
+    """Stampa un report pulito e formattato dell'analisi di validazione."""
+    if "error" in val_results:
+        print(val_results["error"])
+        return
+
+    print("="*60)
+    print("   REPORT VALIDAZIONE TOY MONTE CARLO   ")
+    print("="*60)
+    
+    for param, tests in val_results['parameters'].items():
+        print(f"\n[{param}] ANALISI PARAMETRO:")
+        print("-" * 50)
+        for test_key, data in tests.items():
+            status = "❌ FALLITO" if data['reject_H0'] else "✅ PASSATO"
+            
+            # Formattazione intelligente del valore
+            val_str = ""
+            if 'val' in data:
+                if 'err' in data:
+                    val_str = f"Valore: {data['val']:.4g} ± {data['err']:.4g}  |"
+                elif test_key == 'coverage_1sigma':
+                    val_str = f"Valore: {data['val']:.1f}%  |"
+                else:
+                    val_str = f"Valore: {data['val']:.4g}  |"
+            
+            print(f"{status} | {data['desc']:<35} | {val_str} p-value: {data['p_value']:.3e}")
+
+    print("\n[BONTÀ DEL FIT] ANALISI CHI-QUADRO GLOBALE:")
+    print("-" * 50)
+    for test_key, data in val_results['goodness_of_fit'].items():
+        status = "❌ FALLITO" if data['reject_H0'] else "✅ PASSATO"
+        val_str = f"Valore: {data['val']:.4g}  |" if 'val' in data else ""
+        print(f"{status} | {data['desc']:<35} | {val_str} p-value: {data['p_value']:.3e}")
+    print("="*60)
+
+
+
+
+
+
+
 
 
 """Funzione per fare il test di Student, in xname basta mettere il nome che voglio printi"""
