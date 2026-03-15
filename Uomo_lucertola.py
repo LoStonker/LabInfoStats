@@ -1,7 +1,7 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
-import scipy.stats as sc
+import scipy.stats as sc, norm, t
 from iminuit import Minuit
 from iminuit.cost import LeastSquares
 from iminuit.cost import ExtendedBinnedNLL
@@ -17,8 +17,50 @@ from scipy.odr import Model, RealData, ODR
 from matplotlib.ticker import AutoMinorLocator
 
 
-import numpy as np
-from scipy.stats import norm, t # Necessario per la funzione
+
+def estrai_spettro(filename='histo.dat', log_scale=True, show_plot=True):
+    """
+    Legge il file di output dell'MCA.
+    Restituisce gli array dei canali (x) e dei conteggi (y).
+    Se show_plot=True, mostra anche il grafico a schermo.
+    """
+    try:
+        # Carica i dati (la singola colonna di conteggi)
+        conteggi = np.loadtxt(filename)
+    except FileNotFoundError:
+        print(f"Errore: Il file '{filename}' non è stato trovato nella cartella corrente.")
+        return None, None
+        
+    # Crea l'asse X (i canali da 0 fino alla fine dell'array)
+    canali = np.arange(len(conteggi))
+    
+    # --- Interruttore per il grafico ---
+    if show_plot:
+        plt.style.use('seaborn-v0_8-whitegrid')
+        plt.figure(figsize=(10, 6))
+        
+        # 'steps-mid' disegna il grafico "a istogramma", perfetto per i bin dell'MCA
+        plt.plot(canali, conteggi, drawstyle='steps-mid', color='royalblue', linewidth=1.5)
+        
+        plt.xlabel('Canali ADC (CH)', fontsize=12)
+        plt.ylabel('Conteggi', fontsize=12)
+        plt.title(f'Spettro di acquisizione ({filename})', fontsize=14, pad=15)
+        
+        # Scala logaritmica (fondamentale per vedere i picchi piccoli)
+        if log_scale:
+            plt.yscale('log')
+            plt.ylim(bottom=0.5)
+            
+        plt.grid(True, which='major', linestyle='--', linewidth=0.5, color='gray')
+        plt.grid(True, which='minor', linestyle=':', linewidth=0.3, color='lightgray')
+        plt.minorticks_on()
+        
+        plt.tight_layout()
+        plt.show()
+    
+    # Restituisce SEMPRE i dati, a prescindere dal fatto che il grafico sia stato disegnato o no
+    return canali, conteggi
+
 
 def Tstudent(val1, val2, sigma1, sigma2, val1_name="Valore 1", val2_name="Valore 2", use_ttest=False, custom_df=None, significance_level=0.05):
     """
