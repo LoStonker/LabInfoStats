@@ -11,6 +11,7 @@ from scipy.stats import chi2
 from scipy.integrate import quad
 from scipy.stats import norm, chi2, t
 import sys
+import os
 import inspect
 from scipy.optimize import curve_fit
 from scipy.odr import Model, RealData, ODR
