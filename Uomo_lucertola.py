@@ -127,7 +127,7 @@ class FitLikelihoodBomberone:
         
         # Crea Minuit e lancia la minimizzazione
         self.minuit = Minuit(cost, **self.initial_params)
-        self.minuit.errordef = Minuit.LIKELIHOOD
+        #self.minuit.errordef = Minuit.LIKELIHOOD
         
         self.minuit.migrad()
         self.minuit.hesse()
@@ -190,7 +190,8 @@ class FitLikelihoodBomberone:
         # Disegna la curva di best fit (usando la PDF)
         x_fit = np.linspace(self.x[0], self.x[-1], 1000)
         kwargs = {p: self.minuit.values[p] for p in self.minuit.parameters}
-        y_fit = self.modello_pdf(x_fit, **kwargs)
+		bin_width = self.x[1] - self.x[0]
+        y_fit = self.modello_pdf(x_fit, **kwargs) * bin_width
 
         ax1.plot(x_fit, y_fit, color='red', linewidth=2, label='Fit Extended Likelihood')
 
