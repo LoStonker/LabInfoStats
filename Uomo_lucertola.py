@@ -1,7 +1,7 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
-import scipy.stats as sc, norm, t
+import scipy.stats as sc, norm, t, chi2
 from iminuit import Minuit
 from iminuit.cost import LeastSquares
 from iminuit.cost import ExtendedBinnedNLL
@@ -9,7 +9,6 @@ from iminuit.cost import UnbinnedNLL
 from iminuit.cost import BinnedNLL
 from scipy.stats import chi2
 from scipy.integrate import quad
-from scipy.stats import norm, chi2, t
 import sys
 import os
 import inspect
