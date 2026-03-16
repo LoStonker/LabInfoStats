@@ -1,7 +1,8 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
-import scipy.stats as sc, norm, t, chi2
+import scipy.stats as sc
+from scipy.stats import sc, norm, t, chi2
 from iminuit import Minuit
 from iminuit.cost import LeastSquares
 from iminuit.cost import ExtendedBinnedNLL
