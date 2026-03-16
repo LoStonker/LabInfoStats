@@ -63,6 +63,174 @@ def estrai_spettro(filename='histo.dat', log_scale=True, show_plot=True):
     return canali, conteggi
 
 
+
+import numpy as np
+import matplotlib.pyplot as plt
+from iminuit import Minuit
+from iminuit.cost import ExtendedBinnedNLL
+from scipy.stats import norm
+from scipy.stats import chi2 as chi2_dist
+
+# ==========================================
+# MODELLI PER LA LIKELIHOOD BINNATA
+# Per usare la BinnedNLL servono sia la CDF (per il fit) che la PDF (per il grafico)
+# ==========================================
+
+def GaussianaFondo_CDF(x, Area, mu, sigma, B):
+    """ Funzione Cumulativa: Integrale della Gaussiana + Fondo Costante (B) """
+    # norm.cdf è l'integrale della gaussiana standard
+    # B * x è l'integrale di una costante B
+    return Area * norm.cdf(x, loc=mu, scale=sigma) + B * x
+
+def GaussianaFondo_PDF(x, Area, mu, sigma, B):
+    """ Funzione di Densità: Gaussiana normale + Fondo Costante (B) """
+    return Area * norm.pdf(x, loc=mu, scale=sigma) + B
+
+
+# ==========================================
+# CLASSE DI FIT LIKELIHOOD COMPLETA
+# ==========================================
+
+class FitLikelihoodBomberone:
+    def __init__(self, canali, conteggi, modello_cdf, modello_pdf, initial_params, 
+                 xlabel='Canali ADC', ylabel='Conteggi', title='Fit Likelihood Binnata'):
+        
+        self.x = np.array(canali, dtype=float)
+        self.y = np.array(conteggi, dtype=float)
+        
+        self.modello_cdf = modello_cdf
+        self.modello_pdf = modello_pdf
+        self.initial_params = initial_params
+        
+        self.xlabel = xlabel
+        self.ylabel = ylabel
+        self.title = title
+
+        # Creazione dei Bin Edges (i margini dei canali per l'integrale)
+        step = self.x[1] - self.x[0]
+        self.bin_edges = np.append(self.x - step/2, self.x[-1] + step/2)
+
+        self.minuit = None
+        self.fit_result = None
+        self.is_fit_valid = False
+
+        # Variabili Statistiche
+        self.chi2_val = None
+        self.ndof = None
+        self.chi2_reduced = None
+        self.p_value = None
+        self.expected_counts = None
+
+    def perform_fit(self):
+        # Inizializza la funzione di costo per gli istogrammi
+        cost = ExtendedBinnedNLL(self.y, self.bin_edges, self.modello_cdf)
+        
+        # Crea Minuit e lancia la minimizzazione
+        self.minuit = Minuit(cost, **self.initial_params)
+        self.minuit.errordef = Minuit.LIKELIHOOD
+        
+        self.minuit.migrad()
+        self.minuit.hesse()
+
+        self.is_fit_valid = self.minuit.valid
+        
+        if self.is_fit_valid:
+            # Salva i parametri in un dizionario
+            self.fit_result = {p: (self.minuit.values[p], self.minuit.errors[p]) for p in self.minuit.parameters}
+            self.calculate_fit_statistics()
+            self.print_results()
+        else:
+            print("❌ ATTENZIONE: Il fit non ha raggiunto un minimo valido.")
+            
+        return self
+
+    def calculate_fit_statistics(self):
+        # Calcolo dei conteggi attesi (Expected) integrando la CDF tra i margini
+        kwargs = {p: self.minuit.values[p] for p in self.minuit.parameters}
+        cdf_edges = self.modello_cdf(self.bin_edges, **kwargs)
+        self.expected_counts = np.diff(cdf_edges)
+
+        # Calcolo del Chi-Quadro di Pearson
+        # Escludiamo i bin dove l'atteso è zero per evitare divisioni impossibili
+        mask = self.expected_counts > 0
+        O = self.y[mask]      # Osservati
+        E = self.expected_counts[mask] # Attesi
+
+        self.chi2_val = np.sum((O - E)**2 / E)
+        self.ndof = len(O) - len(self.initial_params)
+        self.chi2_reduced = self.chi2_val / self.ndof if self.ndof > 0 else np.inf
+        self.p_value = chi2_dist.sf(self.chi2_val, self.ndof)
+
+    def print_results(self):
+        print("="*50)
+        print(f" RISULTATI FIT LIKELIHOOD: {self.title}")
+        print("="*50)
+        for p, (v, err) in self.fit_result.items():
+            print(f"{p:>10} = {v:10.4g} ± {err:.4g}")
+        print("-" * 50)
+        print(f"Chi2 / ndof = {self.chi2_val:.2f} / {self.ndof} = {self.chi2_reduced:.2f}")
+        print(f"p-value     = {self.p_value:.4g}")
+        print("="*50)
+
+    def plot_results(self):
+        if not self.is_fit_valid:
+            print("⚠️ Esegui prima un fit valido!")
+            return
+
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9, 7), gridspec_kw={'height_ratios': [3, 1]}, sharex=True)
+        plt.style.use('seaborn-v0_8-whitegrid')
+
+        # --- PLOT SUPERIORE: Dati e Fit ---
+        # Per i dati grezzi usiamo l'approssimazione sqrt(N) solo per disegnare le barre d'errore
+        errori_y = np.sqrt(self.y)
+        errori_y[self.y == 0] = 1 
+
+        ax1.errorbar(self.x, self.y, yerr=errori_y, fmt='o', color='black', label='Dati MCA', markersize=4, capsize=3)
+
+        # Disegna la curva di best fit (usando la PDF)
+        x_fit = np.linspace(self.x[0], self.x[-1], 1000)
+        kwargs = {p: self.minuit.values[p] for p in self.minuit.parameters}
+        y_fit = self.modello_pdf(x_fit, **kwargs)
+
+        ax1.plot(x_fit, y_fit, color='red', linewidth=2, label='Fit Extended Likelihood')
+
+        ax1.set_ylabel(self.ylabel)
+        ax1.set_title(self.title, fontsize=14)
+        ax1.legend()
+        ax1.grid(True, linestyle='--', alpha=0.6)
+
+        # Tabella testuale nel grafico
+        res_text = f"$\\chi^2$ / ndof = {self.chi2_val:.1f} / {self.ndof}\n"
+        res_text += f"p-value = {self.p_value:.3f}\n\n"
+        for p, (v, e) in self.fit_result.items():
+            res_text += f"{p} = {v:.4g} $\\pm$ {e:.3g}\n"
+
+        ax1.text(0.95, 0.95, res_text, transform=ax1.transAxes, fontsize=10,
+                 verticalalignment='top', horizontalalignment='right',
+                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.9, edgecolor='gray'))
+
+        # --- PLOT INFERIORE: Pulls ---
+        # Pull di Pearson: (Osservati - Attesi) / sqrt(Attesi)
+        # Sostituiamo eventuali zeri negli attesi con 1.0 per evitare warning
+        attesi_safe = np.where(self.expected_counts > 0, self.expected_counts, 1.0)
+        pulls = (self.y - self.expected_counts) / np.sqrt(attesi_safe)
+
+        ax2.axhline(0, color='red', linestyle='--', linewidth=1.5)
+        ax2.errorbar(self.x, pulls, yerr=np.ones_like(pulls), fmt='o', color='royalblue', markersize=4, capsize=0)
+
+        ax2.set_xlabel(self.xlabel)
+        ax2.set_ylabel('Pulls')
+        ax2.set_ylim(-4, 4)
+        ax2.grid(True, linestyle='--', alpha=0.6)
+
+        plt.tight_layout()
+        plt.show()
+
+
+
+
+
+
 def Tstudent(val1, val2, sigma1, sigma2, val1_name="Valore 1", val2_name="Valore 2", use_ttest=False, custom_df=None, significance_level=0.05):
     """
     Esegue un test di compatibilità tra due valori con le loro incertezze.
